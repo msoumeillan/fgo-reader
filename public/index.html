@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>FGO Reader</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: white; margin: 0; overflow: hidden; height: 100vh; user-select: none; }
+
+        /* === CHAPTER SELECT === */
+        #chapter-screen {
+            position: absolute; inset: 0; z-index: 100;
+            background: radial-gradient(ellipse at 50% 20%, #0d1840 0%, #020510 100%);
+            overflow-y: auto; display: flex; flex-direction: column;
+        }
+        #chapter-header { text-align: center; padding: 28px 20px 20px; flex-shrink: 0; }
+        #ch-title {
+            font-size: 2rem; font-weight: 900; letter-spacing: 0.18em;
+            background: linear-gradient(135deg, #c8a84b, #ffe08a, #c8a84b);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        #ch-subtitle {
+            font-size: 0.72rem; letter-spacing: 0.3em; color: rgba(160,190,255,0.35);
+            text-transform: uppercase; margin-top: 5px;
+        }
+        #chapter-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr);
+            gap: 10px; padding: 0 20px 30px;
+            max-width: 1100px; margin: 0 auto; width: 100%;
+        }
+        .war-card {
+            position: relative; cursor: pointer; border-radius: 7px; overflow: hidden;
+            border: 1px solid rgba(80,130,255,0.12);
+            transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+            background: #050a20;
+        }
+        .war-card:hover {
+            transform: scale(1.04); border-color: rgba(120,180,255,0.55);
+            box-shadow: 0 0 26px rgba(60,120,255,0.45);
+        }
+        .war-card img { width: 100%; display: block; }
+        .war-card-fallback {
+            height: 76px; display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #0a1540, #0d2060);
+            font-size: 0.8rem; color: rgba(150,180,255,0.5); padding: 8px; text-align: center;
+        }
+        .war-card-name {
+            padding: 7px 10px 9px; font-size: 0.68rem; line-height: 1.35;
+            color: rgba(170,200,255,0.65);
+        }
+
+        /* === QUEST SELECT === */
+        #quest-screen {
+            position: absolute; inset: 0; z-index: 100;
+            background: radial-gradient(ellipse at 50% 20%, #0d1840 0%, #020510 100%);
+            display: none; flex-direction: column;
+        }
+        #quest-back {
+            position: absolute; top: 12px; left: 12px; z-index: 10;
+            background: rgba(10,20,60,0.8); border: 1px solid rgba(80,130,255,0.3);
+            color: #c8ddff; padding: 7px 14px; border-radius: 6px; cursor: pointer;
+            font-size: 0.85rem; transition: background 0.15s;
+        }
+        #quest-back:hover { background: rgba(30,60,160,0.8); }
+        #quest-war-banner { display: block; flex-shrink: 0; margin: 0 auto; }
+        #quest-war-title {
+            padding: 14px 18px 10px; font-size: 0.95rem; color: #c8ddff; font-weight: bold;
+            border-bottom: 1px solid rgba(80,130,255,0.2); flex-shrink: 0; line-height: 1.4;
+        }
+        #quest-list-container { flex: 1; overflow-y: auto; padding: 10px 14px; }
+        .spot-group { margin-bottom: 8px; }
+        .spot-name {
+            font-size: 0.65rem; letter-spacing: 0.18em; color: rgba(100,140,255,0.45);
+            text-transform: uppercase; margin-bottom: 5px; padding-left: 4px;
+        }
+        .quest-item {
+            padding: 9px 14px; border-radius: 6px; cursor: pointer;
+            border: 1px solid transparent; margin-bottom: 3px;
+            font-size: 0.88rem; color: #a0bcf0; transition: background 0.12s, border-color 0.12s;
+            background: rgba(10,20,60,0.35);
+        }
+        .quest-item:hover { background: rgba(20,50,120,0.55); border-color: rgba(80,130,255,0.25); }
+        .quest-item.selected { background: rgba(25,60,170,0.7); border-color: rgba(100,160,255,0.55); color: #ddeeff; }
+        .quest-phase { font-size: 0.65rem; color: rgba(100,140,255,0.5); margin-right: 8px; }
+        #quest-launch-bar { padding: 12px 14px 14px; border-top: 1px solid rgba(80,130,255,0.18); flex-shrink: 0; }
+        #quest-log { color: #f1c40f; font-size: 0.82rem; text-align: center; min-height: 16px; margin-top: 7px; }
+
+        /* === READER === */
+        #reader-container { display: none; width: 100%; height: 100%; position: relative; }
+        #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; transition: background-image 0.5s ease-in-out; }
+
+        #char-container {
+            position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            overflow: hidden; pointer-events: none; z-index: 5; display: none;
+        }
+        #char-body { position: absolute; background-repeat: no-repeat; }
+        #char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
+
+        #text-box {
+            position: absolute; bottom: 0; left: 0; right: 0; height: 19%;
+            z-index: 10; cursor: pointer;
+            background: linear-gradient(to right, rgba(5,15,50,0.96) 0%, rgba(8,22,70,0.93) 40%, rgba(8,22,70,0.93) 60%, rgba(5,15,50,0.96) 100%);
+            border-top: 2px solid rgba(80,140,255,0.6);
+            box-shadow: 0 -4px 20px rgba(30,80,200,0.25), inset 0 1px 0 rgba(120,180,255,0.15);
+            padding: 14px 60px 14px 40px;
+            display: flex; flex-direction: column; justify-content: center; gap: 8px;
+        }
+        #speaker-tab {
+            position: absolute; top: -34px; left: 30px;
+            background: linear-gradient(135deg, rgba(20,60,160,0.95), rgba(10,35,100,0.95));
+            border: 1px solid rgba(80,140,255,0.5); border-bottom: none;
+            padding: 5px 22px 7px;
+            clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+            min-width: 120px;
+        }
+        #speaker { color: #c8ddff; font-weight: bold; font-size: 1.15rem; letter-spacing: 0.04em; text-shadow: 0 0 8px rgba(100,160,255,0.6); }
+        #text { font-size: 1.35rem; line-height: 1.55; color: #eef2ff; text-shadow: 1px 1px 3px rgba(0,0,10,0.9); }
+        #next-icon {
+            position: absolute; bottom: 10px; right: 20px; width: 24px; height: 24px;
+            border: 2px solid #7ab0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 0.7rem; color: #7ab0ff; animation: pulse-next 1.4s ease-in-out infinite;
+        }
+        @keyframes pulse-next { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
+
+        #options-btn { position: absolute; top: 10px; right: 10px; z-index: 20; background: rgba(40,40,40,0.75); color: white; border: 1px solid #555; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; font-size: 1.1rem; display: flex; align-items: center; justify-content: center; }
+        #options-overlay { display: none; position: absolute; inset: 0; z-index: 49; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        #options-overlay.active { display: flex; }
+        #options-box {
+            background: linear-gradient(160deg, #0a0e1f, #0d1530);
+            border: 1px solid rgba(80,130,255,0.35); border-radius: 12px;
+            padding: 32px 40px; display: flex; flex-direction: column; gap: 18px;
+            min-width: 300px; box-shadow: 0 0 30px rgba(20,60,180,0.3);
+        }
+        #options-box h3 { margin: 0; color: rgba(160,190,255,0.7); font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; text-align: center; }
+        .opt-row { display: flex; flex-direction: column; gap: 8px; }
+        .opt-label { font-size: 0.9rem; color: #c8ddff; display: flex; justify-content: space-between; }
+        #volume-slider { width: 100%; accent-color: #3a7bd5; cursor: pointer; height: 4px; }
+        #options-box .opt-btn { padding: 11px 20px; border-radius: 7px; font-size: 0.95rem; cursor: pointer; border: 1px solid rgba(80,130,255,0.3); background: rgba(20,40,100,0.6); color: #c8ddff; transition: background 0.15s; }
+        #options-box .opt-btn:hover { background: rgba(40,70,160,0.8); }
+
+        #end-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,0.75); justify-content: center; align-items: center; }
+        #end-overlay.active { display: flex; }
+        #end-box { background: #1a1a2e; border: 1px solid #3498db; border-radius: 10px; padding: 40px 50px; text-align: center; display: flex; flex-direction: column; gap: 16px; min-width: 380px; }
+        #end-box h2 { margin: 0; color: #f1c40f; font-size: 1.3rem; }
+        #end-box p { margin: 0; color: #aaa; font-size: 0.95rem; }
+        #end-box button { padding: 12px 24px; border-radius: 6px; font-size: 1rem; cursor: pointer; border: none; }
+        #btn-next-quest { background: #3498db; color: white; }
+        #btn-next-quest:hover { background: #2980b9; }
+        #btn-back-menu { background: #333; color: #ccc; }
+        #btn-back-menu:hover { background: #444; }
+
+        #choice-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; }
+        #choice-overlay.active { display: flex; }
+        #choice-box { background: #1a1a2e; border: 1px solid #3498db; border-radius: 10px; padding: 30px 40px; display: flex; flex-direction: column; gap: 14px; min-width: 400px; max-width: 700px; }
+        #choice-box p { margin: 0 0 8px; color: #aaa; font-size: 0.95rem; text-align: center; }
+        .choice-btn { background: #223; border: 1px solid #3498db; color: white; padding: 12px 20px; border-radius: 6px; font-size: 1.1rem; cursor: pointer; text-align: left; transition: background 0.15s; }
+        .choice-btn:hover { background: #3498db; }
+    </style>
+</head>
+<body>
+    <audio id="bgm-player" loop></audio>
+    <audio id="se-player"></audio>
+
+    <!-- CHAPTER SELECT -->
+    <div id="chapter-screen">
+        <div id="chapter-header">
+            <div id="ch-title">FGO READER</div>
+            <div id="ch-subtitle">Fate / Grand Order — Story Viewer</div>
+        </div>
+        <div id="chapter-grid"></div>
+    </div>
+
+    <!-- QUEST SELECT -->
+    <div id="quest-screen">
+        <button id="quest-back" onclick="showChapterScreen()">← Back</button>
+        <img id="quest-war-banner" src="" alt="">
+        <div id="quest-war-title"></div>
+        <div id="quest-list-container"></div>
+        <div id="quest-launch-bar">
+            <div id="quest-log"></div>
+        </div>
+    </div>
+
+    <!-- READER -->
+    <div id="reader-container">
+        <button id="options-btn" onclick="toggleOptions()">⚙</button>
+        <div id="options-overlay" onclick="toggleOptions()">
+            <div id="options-box" onclick="event.stopPropagation()">
+                <h3>Options</h3>
+                <div class="opt-row">
+                    <span class="opt-label">Music volume <span id="vol-val">50%</span></span>
+                    <input id="volume-slider" type="range" min="0" max="100" value="50" oninput="setVolume(this.value)">
+                </div>
+                <button class="opt-btn" onclick="stop()">↩ Back to menu</button>
+            </div>
+        </div>
+        <div id="end-overlay">
+            <div id="end-box">
+                <h2>Chapitre terminé</h2>
+                <p id="end-next-label"></p>
+                <button id="btn-next-quest" onclick="goNextQuest()">Chapitre suivant →</button>
+                <button id="btn-back-menu" onclick="stop()">Retour au menu</button>
+            </div>
+        </div>
+        <div id="bg-layer"></div>
+        <div id="char-container">
+            <div id="char-body"></div>
+            <div id="char-face"></div>
+        </div>
+        <div id="text-box" onclick="handleClick(event)">
+            <div id="speaker-tab"><div id="speaker"></div></div>
+            <div id="text"></div>
+            <div id="next-icon">▶</div>
+        </div>
+        <div id="choice-overlay">
+            <div id="choice-box"><p>Choisissez une réponse</p></div>
+        </div>
+    </div>
+
+    <script>
+        const figureCache = {};
+        let lastFigure = null;
+
+        // Reproduit le placement du jeu : scène de 1024x576 calée sur la
+        // hauteur de l'écran, corps décalé par offsetX/offsetY, visage
+        // découpé dans la planche selon sa taille réelle (pas toujours 256px)
+        const Compositor = {
+            async update(url, faceIndex) {
+                const container = document.getElementById('char-container');
+                const bodyDiv = document.getElementById('char-body');
+                const faceDiv = document.getElementById('char-face');
+                const match = url.match(/\/([0-9]+)_merged\.png/);
+                const charID = match ? match[1] : null;
+                if (charID && !(charID in figureCache)) {
+                    try {
+                        const r = await fetch(`/api/figurePos/${charID}`);
+                        figureCache[charID] = await r.json();
+                    } catch(e) { figureCache[charID] = null; }
+                }
+                const info = charID ? figureCache[charID] : null;
+                lastFigure = { url, faceIndex };
+
+                const S = window.innerHeight / 576;
+                container.style.width = `${1024 * S}px`;
+                container.style.height = `${window.innerHeight}px`;
+
+                const figW = info ? info.figureWidth : 1024;
+                const offY = info ? info.offsetY : 0;
+                const bodyH = info ? info.bodyHeight : 768;
+                const bodyLeft = ((1024 - figW) / 2 + (info ? info.offsetX : 0)) * S;
+
+                bodyDiv.style.backgroundImage = `url("${url}")`;
+                bodyDiv.style.width = `${figW * S}px`;
+                bodyDiv.style.height = `${bodyH * S}px`;
+                bodyDiv.style.left = `${bodyLeft}px`;
+                bodyDiv.style.top = `${-offY * S}px`;
+                bodyDiv.style.backgroundSize = `${figW * S}px auto`;
+
+                const face = parseInt(faceIndex);
+                if (!info || !Number.isFinite(face) || face <= 0) {
+                    faceDiv.style.display = 'none';
+                    container.style.display = 'block';
+                    return;
+                }
+                const imageIndex = face - 1;
+                const perRow = Math.max(1, Math.floor(1024 / info.w));
+                const col = imageIndex % perRow;
+                const row = Math.floor(imageIndex / perRow);
+                let sheetY;
+                if (info.standard) {
+                    sheetY = 768 + 256 * row;
+                } else {
+                    const page = Math.floor(row / perRow);
+                    sheetY = info.figureHeight + 1024 * page + (row % perRow) * info.h;
+                }
+                faceDiv.style.backgroundImage = `url("${url}")`;
+                faceDiv.style.width = `${info.w * S}px`;
+                faceDiv.style.height = `${info.h * S}px`;
+                faceDiv.style.left = `${info.faceX * S + bodyLeft}px`;
+                faceDiv.style.top = `${(info.faceY - offY) * S}px`;
+                faceDiv.style.backgroundSize = `${figW * S}px auto`;
+                faceDiv.style.backgroundPosition = `${-(col * info.w * S)}px ${-(sheetY * S)}px`;
+                faceDiv.style.display = 'block';
+                container.style.display = 'block';
+            }
+        };
+        window.addEventListener('resize', () => {
+            if (lastFigure && document.getElementById('char-container').style.display === 'block') {
+                Compositor.update(lastFigure.url, lastFigure.faceIndex);
+            }
+        });
+
+        let wars = [], sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuestId = null;
+        const audio = document.getElementById('bgm-player');
+        const seAudio = document.getElementById('se-player');
+        audio.volume = 0.5;
+        seAudio.volume = 0.8;
+
+        async function init() {
+            const r = await fetch('/api/wars');
+            wars = await r.json();
+            buildChapterGrid();
+        }
+
+        const BANNER_MAP = {
+            303: 304, 304: 305,
+            305: 307, 306: 308,
+            307: 309,
+            308: 312,
+            310: 315,
+            311: 317,
+        };
+        function bannerUrl(warId) {
+            if (warId >= 1001 && warId <= 1006) {
+                return `https://static.atlasacademy.io/NA/Banner/chaldea_category_${warId}.png`;
+            }
+            const capId = BANNER_MAP[warId] ?? warId;
+            return `https://static.atlasacademy.io/NA/Banner/questboard_cap${capId}.png`;
+        }
+
+        function buildChapterGrid() {
+            const grid = document.getElementById('chapter-grid');
+            grid.innerHTML = '';
+            wars.forEach(war => {
+                const card = document.createElement('div');
+                card.className = 'war-card';
+                card.onclick = () => showQuestScreen(war);
+
+                const img = document.createElement('img');
+                img.src = bannerUrl(war.id);
+                img.alt = '';
+                img.onerror = function() {
+                    this.remove();
+                    const fb = document.createElement('div');
+                    fb.className = 'war-card-fallback';
+                    fb.textContent = war.longName.split('\n')[0];
+                    card.insertBefore(fb, card.firstChild);
+                };
+
+                const name = document.createElement('div');
+                name.className = 'war-card-name';
+                name.textContent = war.longName.replace(/\n/g, ' ');
+
+                card.appendChild(img);
+                card.appendChild(name);
+                grid.appendChild(card);
+            });
+        }
+
+        function showChapterScreen() {
+            document.getElementById('quest-screen').style.display = 'none';
+            document.getElementById('chapter-screen').style.display = 'flex';
+        }
+
+        function showQuestScreen(war) {
+            selectedQuestId = null;
+            document.getElementById('chapter-screen').style.display = 'none';
+            const qs = document.getElementById('quest-screen');
+            qs.style.display = 'flex';
+
+            const banner = document.getElementById('quest-war-banner');
+            banner.style.display = 'block';
+            banner.src = bannerUrl(war.id);
+            banner.onerror = () => { banner.style.display = 'none'; };
+
+            document.getElementById('quest-war-title').textContent = war.longName.replace(/\n/g, ' ');
+
+            const container = document.getElementById('quest-list-container');
+            container.innerHTML = '';
+            war.spots.forEach(spot => {
+                if (!spot.quests || spot.quests.length === 0) return;
+                const group = document.createElement('div');
+                group.className = 'spot-group';
+                if (spot.name) {
+                    const sn = document.createElement('div');
+                    sn.className = 'spot-name';
+                    sn.textContent = spot.name;
+                    group.appendChild(sn);
+                }
+                spot.quests.forEach(quest => {
+                    const item = document.createElement('div');
+                    item.className = 'quest-item';
+                    item.textContent = quest.name;
+                    item.onclick = () => {
+                        selectedQuestId = quest.id;
+                        go();
+                    };
+                    group.appendChild(item);
+                });
+                container.appendChild(group);
+            });
+
+            document.getElementById('quest-log').textContent = '';
+        }
+
+        function allQuests() {
+            return wars.flatMap(w => w.spots.flatMap(s => s.quests.map(q => ({ ...q, warName: w.longName }))));
+        }
+        function nextQuest() {
+            const all = allQuests();
+            const i = all.findIndex(q => String(q.id) === String(currentQuestId));
+            return i >= 0 && i + 1 < all.length ? all[i + 1] : null;
+        }
+
+        function toggleOptions() { document.getElementById('options-overlay').classList.toggle('active'); }
+        function setVolume(v) { audio.volume = v / 100; document.getElementById('vol-val').textContent = v + '%'; }
+
+        async function loadQuest(id) {
+            currentQuestId = id;
+            document.getElementById('end-overlay').classList.remove('active');
+            audio.src = '';
+            audio.load();
+            const r = await fetch(`/api/quest/${id}`);
+            const d = await r.json();
+            if (!d.script || d.script.length === 0) return false;
+            sc = d.script; idx = 0;
+            return true;
+        }
+
+        async function go() {
+            if (!selectedQuestId) return;
+            document.getElementById('quest-log').textContent = 'Chargement...';
+            const ok = await loadQuest(selectedQuestId);
+            if (!ok) { document.getElementById('quest-log').textContent = 'Aucun contenu.'; return; }
+            document.getElementById('quest-screen').style.display = 'none';
+            document.getElementById('reader-container').style.display = 'block';
+            document.getElementById('char-container').style.display = 'none';
+            run();
+        }
+
+        async function goNextQuest() {
+            const all = allQuests();
+            let i = all.findIndex(q => String(q.id) === String(currentQuestId));
+            while (++i < all.length) {
+                const ok = await loadQuest(all[i].id);
+                if (ok) { run(); return; }
+            }
+            stop();
+        }
+
+        function showChoices(choices) {
+            const overlay = document.getElementById('choice-overlay');
+            const box = document.getElementById('choice-box');
+            [...box.querySelectorAll('.choice-btn')].forEach(b => b.remove());
+            choices.forEach(choice => {
+                const btn = document.createElement('button');
+                btn.className = 'choice-btn';
+                const text = typeof choice === 'string' ? choice : choice.text;
+                const steps = (typeof choice === 'object' && choice.steps) ? choice.steps : [];
+                btn.textContent = text;
+                btn.onclick = () => {
+                    overlay.classList.remove('active');
+                    if (steps.length > 0) sc.splice(idx + 1, 0, ...steps);
+                    idx++; run();
+                };
+                box.appendChild(btn);
+            });
+            overlay.classList.add('active');
+        }
+
+        async function run() {
+            if (idx >= sc.length) {
+                audio.pause();
+                const nq = nextQuest();
+                const label = document.getElementById('end-next-label');
+                const btnNext = document.getElementById('btn-next-quest');
+                if (nq) { label.textContent = `Suivant : ${nq.name}`; btnNext.style.display = ''; }
+                else { label.textContent = 'Fin du contenu disponible.'; btnNext.style.display = 'none'; }
+                document.getElementById('end-overlay').classList.add('active');
+                return;
+            }
+            const line = sc[idx];
+            let autoSkip = true;
+
+            if (line.stopBgm) audio.pause();
+            else if (line.bgm && audio.src !== line.bgm) { audio.src = line.bgm; audio.play().catch(() => {}); }
+
+            if (line.se) { seAudio.src = line.se; seAudio.play().catch(() => {}); }
+
+            if (line.background) document.getElementById('bg-layer').style.backgroundImage = `url('${line.background}')`;
+
+            if (line.hideChar) document.getElementById('char-container').style.display = 'none';
+
+            if (line.showChar) await Compositor.update(line.showChar.url, line.showChar.face);
+
+            if (line.choices) { showChoices(line.choices); isProcessing = true; return; }
+
+            if (line.talk) {
+                document.getElementById('speaker').innerText = line.talk.speakerName;
+                document.getElementById('text').innerHTML = line.talk.detail.replace(/\[line\]/g, '<br>');
+                if (line.figure) await Compositor.update(line.figure.url, line.figure.face);
+                autoSkip = false;
+            }
+
+            if (autoSkip) { isProcessing = true; setTimeout(() => { idx++; run(); }, 20); }
+            else { isProcessing = false; }
+        }
+
+        function handleClick(e) { if (e.clientX < window.innerWidth / 2) prev(); else next(); }
+        function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
+        function prev() {
+            if (isProcessing) return;
+            // Revient à la réplique précédente (en sautant les étapes auto :
+            // décors, musiques...) et restaure le décor en vigueur à ce moment-là
+            let j = idx - 1;
+            while (j >= 0 && !sc[j].talk) j--;
+            if (j < 0) return;
+            for (let k = j; k >= 0; k--) {
+                if (sc[k].background) {
+                    document.getElementById('bg-layer').style.backgroundImage = `url('${sc[k].background}')`;
+                    break;
+                }
+            }
+            idx = j; run();
+        }
+        function stop() {
+            audio.pause();
+            audio.src = '';
+            document.getElementById('reader-container').style.display = 'none';
+            document.getElementById('end-overlay').classList.remove('active');
+            document.getElementById('options-overlay').classList.remove('active');
+            document.getElementById('choice-overlay').classList.remove('active');
+            document.getElementById('char-container').style.display = 'none';
+            document.getElementById('bg-layer').style.backgroundImage = '';
+            sc = []; idx = 0; isProcessing = false;
+            showChapterScreen();
+        }
+
+        init();
+    </script>
+</body>
+</html>

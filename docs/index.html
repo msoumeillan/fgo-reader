@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+    <meta name="theme-color" content="#020510">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="icon" href="icon-192.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <title>FGO Reader</title>
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; }
+        body { font-family: 'Segoe UI', sans-serif; background: #000; color: white; margin: 0; overflow: hidden; user-select: none; -webkit-user-select: none; }
+
+        /* === CHAPTER SELECT === */
+        #chapter-screen {
+            position: absolute; inset: 0; z-index: 100;
+            background: radial-gradient(ellipse at 50% 20%, #0d1840 0%, #020510 100%);
+            overflow-y: auto; display: flex; flex-direction: column;
+            padding-top: env(safe-area-inset-top);
+        }
+        #chapter-header { text-align: center; padding: 28px 20px 20px; flex-shrink: 0; }
+        #ch-title {
+            font-size: clamp(1.4rem, 5vw, 2rem); font-weight: 900; letter-spacing: 0.18em;
+            background: linear-gradient(135deg, #c8a84b, #ffe08a, #c8a84b);
+            -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+        }
+        #ch-subtitle {
+            font-size: 0.72rem; letter-spacing: 0.3em; color: rgba(160,190,255,0.35);
+            text-transform: uppercase; margin-top: 5px;
+        }
+        #chapter-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 10px; padding: 0 16px 30px;
+            max-width: 1100px; margin: 0 auto; width: 100%;
+        }
+        @media (max-width: 520px) {
+            #chapter-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        }
+        .war-card {
+            position: relative; cursor: pointer; border-radius: 7px; overflow: hidden;
+            border: 1px solid rgba(80,130,255,0.12);
+            transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+            background: #050a20;
+        }
+        .war-card:hover {
+            transform: scale(1.04); border-color: rgba(120,180,255,0.55);
+            box-shadow: 0 0 26px rgba(60,120,255,0.45);
+        }
+        .war-card img { width: 100%; display: block; }
+        .war-card-fallback {
+            height: 76px; display: flex; align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #0a1540, #0d2060);
+            font-size: 0.8rem; color: rgba(150,180,255,0.5); padding: 8px; text-align: center;
+        }
+        .war-card-name {
+            padding: 7px 10px 9px; font-size: 0.68rem; line-height: 1.35;
+            color: rgba(170,200,255,0.65);
+        }
+
+        /* === QUEST SELECT === */
+        #quest-screen {
+            position: absolute; inset: 0; z-index: 100;
+            background: radial-gradient(ellipse at 50% 20%, #0d1840 0%, #020510 100%);
+            display: none; flex-direction: column;
+            padding-top: env(safe-area-inset-top);
+        }
+        #quest-back {
+            position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 12px; z-index: 10;
+            background: rgba(10,20,60,0.8); border: 1px solid rgba(80,130,255,0.3);
+            color: #c8ddff; padding: 9px 16px; border-radius: 6px; cursor: pointer;
+            font-size: 0.85rem; transition: background 0.15s;
+        }
+        #quest-back:hover { background: rgba(30,60,160,0.8); }
+        #quest-war-banner { display: block; flex-shrink: 0; margin: 0 auto; max-width: min(440px, 90vw); }
+        #quest-war-title {
+            padding: 14px 18px 10px; font-size: 0.95rem; color: #c8ddff; font-weight: bold;
+            border-bottom: 1px solid rgba(80,130,255,0.2); flex-shrink: 0; line-height: 1.4;
+        }
+        #quest-list-container { flex: 1; overflow-y: auto; padding: 10px 14px; -webkit-overflow-scrolling: touch; }
+        .quest-loading { color: rgba(160,190,255,0.5); text-align: center; padding: 24px; font-size: 0.9rem; }
+        .spot-group { margin-bottom: 8px; }
+        .spot-name {
+            font-size: 0.65rem; letter-spacing: 0.18em; color: rgba(100,140,255,0.45);
+            text-transform: uppercase; margin-bottom: 5px; padding-left: 4px;
+        }
+        .quest-item {
+            padding: 12px 14px; border-radius: 6px; cursor: pointer;
+            border: 1px solid transparent; margin-bottom: 3px;
+            font-size: 0.92rem; color: #a0bcf0; transition: background 0.12s, border-color 0.12s;
+            background: rgba(10,20,60,0.35);
+        }
+        .quest-item:hover { background: rgba(20,50,120,0.55); border-color: rgba(80,130,255,0.25); }
+        #quest-launch-bar { padding: 8px 14px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid rgba(80,130,255,0.18); flex-shrink: 0; }
+        #quest-log { color: #f1c40f; font-size: 0.82rem; text-align: center; min-height: 16px; }
+
+        /* === READER === */
+        #reader-container { display: none; width: 100%; height: 100%; position: relative; }
+        #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; transition: background-image 0.5s ease-in-out; }
+
+        #char-container {
+            position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            overflow: hidden; pointer-events: none; z-index: 5; display: none;
+        }
+        #char-body { position: absolute; background-repeat: no-repeat; }
+        #char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
+
+        #text-box {
+            position: absolute; bottom: 0; left: 0; right: 0; min-height: 19%;
+            z-index: 10; cursor: pointer;
+            background: linear-gradient(to right, rgba(5,15,50,0.96) 0%, rgba(8,22,70,0.93) 40%, rgba(8,22,70,0.93) 60%, rgba(5,15,50,0.96) 100%);
+            border-top: 2px solid rgba(80,140,255,0.6);
+            box-shadow: 0 -4px 20px rgba(30,80,200,0.25), inset 0 1px 0 rgba(120,180,255,0.15);
+            padding: 12px 44px calc(12px + env(safe-area-inset-bottom)) 24px;
+            display: flex; flex-direction: column; justify-content: center; gap: 6px;
+        }
+        #speaker-tab {
+            position: absolute; top: -32px; left: 18px;
+            background: linear-gradient(135deg, rgba(20,60,160,0.95), rgba(10,35,100,0.95));
+            border: 1px solid rgba(80,140,255,0.5); border-bottom: none;
+            padding: 5px 22px 7px;
+            clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
+            min-width: 100px;
+        }
+        #speaker { color: #c8ddff; font-weight: bold; font-size: clamp(0.9rem, 2.6vmin, 1.15rem); letter-spacing: 0.04em; text-shadow: 0 0 8px rgba(100,160,255,0.6); }
+        #text { font-size: clamp(0.95rem, 3.2vmin, 1.35rem); line-height: 1.5; color: #eef2ff; text-shadow: 1px 1px 3px rgba(0,0,10,0.9); }
+        #next-icon {
+            position: absolute; bottom: calc(8px + env(safe-area-inset-bottom)); right: 16px; width: 22px; height: 22px;
+            border: 2px solid #7ab0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+            font-size: 0.65rem; color: #7ab0ff; animation: pulse-next 1.4s ease-in-out infinite;
+        }
+        @keyframes pulse-next { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
+
+        #options-btn { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 10px; z-index: 20; background: rgba(40,40,40,0.75); color: white; border: 1px solid #555; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 1.15rem; display: flex; align-items: center; justify-content: center; }
+        #options-overlay { display: none; position: absolute; inset: 0; z-index: 49; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; }
+        #options-overlay.active { display: flex; }
+        #options-box {
+            background: linear-gradient(160deg, #0a0e1f, #0d1530);
+            border: 1px solid rgba(80,130,255,0.35); border-radius: 12px;
+            padding: 28px 32px; display: flex; flex-direction: column; gap: 18px;
+            min-width: min(300px, 84vw); box-shadow: 0 0 30px rgba(20,60,180,0.3);
+        }
+        #options-box h3 { margin: 0; color: rgba(160,190,255,0.7); font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; text-align: center; }
+        .opt-row { display: flex; flex-direction: column; gap: 8px; }
+        .opt-label { font-size: 0.9rem; color: #c8ddff; display: flex; justify-content: space-between; }
+        #volume-slider { width: 100%; accent-color: #3a7bd5; cursor: pointer; height: 4px; }
+        #options-box .opt-btn { padding: 12px 20px; border-radius: 7px; font-size: 0.95rem; cursor: pointer; border: 1px solid rgba(80,130,255,0.3); background: rgba(20,40,100,0.6); color: #c8ddff; transition: background 0.15s; }
+        #options-box .opt-btn:hover { background: rgba(40,70,160,0.8); }
+
+        #end-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,0.75); justify-content: center; align-items: center; }
+        #end-overlay.active { display: flex; }
+        #end-box { background: #1a1a2e; border: 1px solid #3498db; border-radius: 10px; padding: 32px 36px; text-align: center; display: flex; flex-direction: column; gap: 16px; min-width: min(380px, 86vw); }
+        #end-box h2 { margin: 0; color: #f1c40f; font-size: 1.3rem; }
+        #end-box p { margin: 0; color: #aaa; font-size: 0.95rem; }
+        #end-box button { padding: 13px 24px; border-radius: 6px; font-size: 1rem; cursor: pointer; border: none; }
+        #btn-next-quest { background: #3498db; color: white; }
+        #btn-next-quest:hover { background: #2980b9; }
+        #btn-back-menu { background: #333; color: #ccc; }
+        #btn-back-menu:hover { background: #444; }
+
+        #choice-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; padding: 16px; }
+        #choice-overlay.active { display: flex; }
+        #choice-box { background: #1a1a2e; border: 1px solid #3498db; border-radius: 10px; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; min-width: min(400px, 90vw); max-width: 700px; }
+        #choice-box p { margin: 0 0 8px; color: #aaa; font-size: 0.95rem; text-align: center; }
+        .choice-btn { background: #223; border: 1px solid #3498db; color: white; padding: 13px 18px; border-radius: 6px; font-size: clamp(0.95rem, 2.8vmin, 1.1rem); cursor: pointer; text-align: left; transition: background 0.15s; }
+        .choice-btn:hover { background: #3498db; }
+    </style>
+</head>
+<body>
+    <audio id="bgm-player" loop></audio>
+    <audio id="se-player"></audio>
+
+    <!-- CHAPTER SELECT -->
+    <div id="chapter-screen">
+        <div id="chapter-header">
+            <div id="ch-title">FGO READER</div>
+            <div id="ch-subtitle">Fate / Grand Order — Story Viewer</div>
+        </div>
+        <div id="chapter-grid"></div>
+    </div>
+
+    <!-- QUEST SELECT -->
+    <div id="quest-screen">
+        <button id="quest-back" onclick="showChapterScreen()">← Back</button>
+        <img id="quest-war-banner" src="" alt="">
+        <div id="quest-war-title"></div>
+        <div id="quest-list-container"></div>
+        <div id="quest-launch-bar">
+            <div id="quest-log"></div>
+        </div>
+    </div>
+
+    <!-- READER -->
+    <div id="reader-container">
+        <button id="options-btn" onclick="toggleOptions()">⚙</button>
+        <div id="options-overlay" onclick="toggleOptions()">
+            <div id="options-box" onclick="event.stopPropagation()">
+                <h3>Options</h3>
+                <div class="opt-row">
+                    <span class="opt-label">Music volume <span id="vol-val">50%</span></span>
+                    <input id="volume-slider" type="range" min="0" max="100" value="50" oninput="setVolume(this.value)">
+                </div>
+                <button class="opt-btn" onclick="stop()">↩ Back to menu</button>
+            </div>
+        </div>
+        <div id="end-overlay">
+            <div id="end-box">
+                <h2>Chapitre terminé</h2>
+                <p id="end-next-label"></p>
+                <button id="btn-next-quest" onclick="goNextQuest()">Chapitre suivant →</button>
+                <button id="btn-back-menu" onclick="stop()">Retour au menu</button>
+            </div>
+        </div>
+        <div id="bg-layer"></div>
+        <div id="char-container">
+            <div id="char-body"></div>
+            <div id="char-face"></div>
+        </div>
+        <div id="text-box" onclick="handleClick(event)">
+            <div id="speaker-tab"><div id="speaker"></div></div>
+            <div id="text"></div>
+            <div id="next-icon">▶</div>
+        </div>
+        <div id="choice-overlay">
+            <div id="choice-box"><p>Choisissez une réponse</p></div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
