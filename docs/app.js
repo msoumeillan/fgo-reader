@@ -104,6 +104,11 @@ function cleanDialogueText(text) {
     .trim();
 }
 
+function secondsToMs(value) {
+  const seconds = Number(value);
+  return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
+}
+
 async function fetchQuestScript(questId) {
   const qRes = await fetch(`${API}/nice/${REGION}/quest/${questId}`);
   const data = await qRes.json();
@@ -140,6 +145,7 @@ async function fetchQuestScript(questId) {
       let commActive = null;    // appel vidéo en cours : { url, face }
       let imageBindings = {};   // code -> URL d'image (imageSet)
       let currentImage = null;  // code de l'image actuellement affichée
+      let charPositions = {};   // code -> slot (0/1/2) ou coordonnées x,y
 
       for (let line of lines) {
         line = (line || "").trim();
@@ -189,6 +195,86 @@ async function fetchQuestScript(questId) {
 
         let step = {};
 
+        // Timeline : attente explicite ou attente de fin d'un effet démarré
+        // par une commande précédente.
+        const timedWaitMatch = line.match(/^\[wt\s+([0-9]*\.?[0-9]+)\]/);
+        if (timedWaitMatch) {
+          step.waitMs = secondsToMs(timedWaitMatch[1]);
+          stepBuffer.push(step);
+          continue;
+        }
+        const effectWaitMatch = line.match(/^\[wait\s+([a-zA-Z]+)/);
+        if (effectWaitMatch) {
+          step.waitFor = effectWaitMatch[1];
+          stepBuffer.push(step);
+          continue;
+        }
+
+        // Effets écran : fondus, flashs, wipes et tremblements.
+        const fadeMatch = line.match(/\[(fadein|fadeout)\s+(black|white)\s+([0-9]*\.?[0-9]+)/);
+        if (fadeMatch) {
+          step.screenFade = {
+            direction: fadeMatch[1],
+            color: fadeMatch[2],
+            durationMs: secondsToMs(fadeMatch[3]),
+          };
+        }
+        const flashMatch = line.match(/\[flashin\s+(once|loop)\s+([0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)\s+([0-9A-Fa-f]{8})\s+([0-9A-Fa-f]{8})/);
+        if (flashMatch) {
+          step.flash = {
+            mode: flashMatch[1],
+            inMs: secondsToMs(flashMatch[2]),
+            outMs: secondsToMs(flashMatch[3]),
+            from: `#${flashMatch[4]}`,
+            to: `#${flashMatch[5]}`,
+          };
+        }
+        const flashOutMatch = line.match(/\[flashout\s+([0-9]*\.?[0-9]+)/);
+        if (flashOutMatch) step.flashOutMs = secondsToMs(flashOutMatch[1]);
+
+        const wipeMatch = line.match(/\[(wipein|wipeout)\s+([a-zA-Z]+)\s+([0-9]*\.?[0-9]+)/);
+        if (wipeMatch) {
+          step.wipe = {
+            direction: wipeMatch[1],
+            type: wipeMatch[2],
+            durationMs: secondsToMs(wipeMatch[3]),
+          };
+        }
+        const wipeFilterMatch = line.match(/\[wipeFilter\s+([a-zA-Z]+)\s+([0-9]*\.?[0-9]+)/);
+        if (wipeFilterMatch) {
+          step.wipeFilter = {
+            type: wipeFilterMatch[1],
+            durationMs: secondsToMs(wipeFilterMatch[2]),
+          };
+        }
+        if (line.includes("[wipeOff]")) step.wipeOff = true;
+
+        const shakeMatch = line.match(/\[shake\s+([0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)/);
+        if (shakeMatch) {
+          step.screenShake = {
+            intervalMs: secondsToMs(shakeMatch[1]),
+            x: Number(shakeMatch[2]),
+            y: Number(shakeMatch[3]),
+            durationMs: secondsToMs(shakeMatch[4]),
+          };
+        }
+        if (line.includes("[shakeStop]")) step.screenShakeStop = true;
+
+        // Caméra : translation sur la scène de référence 1024x576 et zoom.
+        const cameraMoveMatch = line.match(/\[cameraMove\s+([0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+),(-?[0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)/);
+        if (cameraMoveMatch) {
+          step.camera = {
+            durationMs: secondsToMs(cameraMoveMatch[1]),
+            x: Number(cameraMoveMatch[2]),
+            y: Number(cameraMoveMatch[3]),
+            scale: Number(cameraMoveMatch[4]),
+          };
+        }
+        const cameraHomeMatch = line.match(/\[cameraHome\s+([0-9]*\.?[0-9]+)/);
+        if (cameraHomeMatch) {
+          step.camera = { durationMs: secondsToMs(cameraHomeMatch[1]), x: 0, y: 0, scale: 1 };
+        }
+
         // 0) communicationChara / Loop : appel vidéo (sprite spécial bleu
         // 98003xxx + effet transparence/scanlines). Le dernier nombre = visage.
         const commMatch = line.match(/communicationChara(?:Loop)?\s+([0-9]+)((?:\s+\d+)*)\s*\]/);
@@ -197,7 +283,8 @@ async function fetchQuestScript(questId) {
           const extra = commMatch[2].trim().split(/\s+/).filter(Boolean).map(Number);
           const face = extra.length ? extra[extra.length - 1] : 0;
           commActive = { url: `${ASSETS}/${REGION}/CharaFigure/${charId}/${charId}_merged.png`, face };
-          step.showChar = { url: commActive.url, face: commActive.face, comm: true };
+          step.showChar = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
+          step.charPosition = "1";
           lastShownCode = null;
           stepBuffer.push(step);
           continue;
@@ -207,7 +294,8 @@ async function fetchQuestScript(questId) {
         if (commFaceMatch) {
           if (commActive) {
             commActive.face = parseInt(commFaceMatch[1], 10);
-            step.showChar = { url: commActive.url, face: commActive.face, comm: true };
+            step.showChar = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
+            step.charPosition = "1";
             stepBuffer.push(step);
           }
           continue;
@@ -247,6 +335,7 @@ async function fetchQuestScript(questId) {
             url: `${ASSETS}/${REGION}/CharaFigure/${charID}/${charID}_merged.png`,
             currentFace: Number.isFinite(baseFace) ? baseFace : 0,
           };
+          if (!(code in charPositions)) charPositions[code] = "1";
           if (charName && charName !== "???") {
             nameToCode[charName] = code;
           }
@@ -272,27 +361,41 @@ async function fetchQuestScript(questId) {
         }
 
         // 2) charaFace / charaFaceFade : [charaFace A 12], [charaFaceFade A 12 0.2]
-        const faceMatch = line.match(/charaFace(?:Fade)?\s+([a-zA-Z0-9]+)\s+([0-9]+)/);
+        const faceMatch = line.match(/charaFace(Fade)?\s+([a-zA-Z0-9]+)\s+([0-9]+)(?:\s+([0-9]*\.?[0-9]+))?/);
         if (faceMatch) {
-          const code = faceMatch[1];
-          const newFace = parseInt(faceMatch[2], 10);
+          const code = faceMatch[2];
+          const newFace = parseInt(faceMatch[3], 10);
           if (speakerState[code] && Number.isFinite(newFace)) {
             speakerState[code].currentFace = newFace;
+            if (visibleChars.has(code)) {
+              step.showChar = {
+                code,
+                url: speakerState[code].url,
+                face: speakerState[code].currentFace,
+              };
+              step.charPosition = charPositions[code] || "1";
+              if (faceMatch[1]) step.charCrossFadeMs = secondsToMs(faceMatch[4] || 0.2);
+            }
           }
+          if (Object.keys(step).length > 0) stepBuffer.push(step);
           continue;
         }
 
         // 2b) charaFadeout : personnage (ou image) qui disparaît
-        const fadeoutMatch = line.match(/charaFadeout\s+([a-zA-Z0-9]+)/);
+        const fadeoutMatch = line.match(/charaFadeout\s+([a-zA-Z0-9]+)(?:\s+([0-9]*\.?[0-9]+))?/);
         if (fadeoutMatch) {
           const outCode = fadeoutMatch[1];
+          const durationMs = secondsToMs(fadeoutMatch[2] || 0);
           visibleChars.delete(outCode);
           if (visibleChars.size === 0) {
             step.hideChar = true;
+            step.charCode = outCode;
+            step.charFadeOutMs = durationMs;
             lastShownCode = null;
           }
           if (outCode === currentImage) {
             step.hideImage = true;
+            step.imageFadeOutMs = durationMs;
             currentImage = null;
           }
         }
@@ -301,15 +404,19 @@ async function fetchQuestScript(questId) {
         // On l'affiche dès son entrée en scène (il reste affiché si un autre
         // perso parle hors écran, ex. Romani en communication).
         // NB : [charaTalk X] est un simple effet de focus, PAS une apparition
-        const fadeinMatch = line.match(/chara(?:Fadein|Put(?:FSR)?)\s+([a-zA-Z0-9]+)/);
+        const fadeinMatch = line.match(/chara(?:Fadein|Put(?:FSR)?)\s+([a-zA-Z0-9]+)(?:\s+([0-9]*\.?[0-9]+))?(?:\s+(-?[0-9]+(?:,-?[0-9]+)?))?/);
         if (fadeinMatch) {
           const inCode = fadeinMatch[1];
-          visibleChars.add(inCode);
           if (speakerState[inCode]) {
+            visibleChars.add(inCode);
             step.showChar = {
+              code: inCode,
               url: speakerState[inCode].url,
               face: speakerState[inCode].currentFace,
             };
+            step.charFadeInMs = secondsToMs(fadeinMatch[2] || 0);
+            if (fadeinMatch[3] !== undefined) charPositions[inCode] = fadeinMatch[3];
+            step.charPosition = charPositions[inCode] || "1";
             lastShownCode = inCode;
           }
         }
@@ -322,9 +429,11 @@ async function fetchQuestScript(questId) {
           visibleChars.add(inCode);
           if (speakerState[inCode]) {
             step.showChar = {
+              code: inCode,
               url: speakerState[inCode].url,
               face: speakerState[inCode].currentFace,
             };
+            step.charPosition = charPositions[inCode] || "1";
             lastShownCode = inCode;
           }
         }
@@ -334,11 +443,33 @@ async function fetchQuestScript(questId) {
         const imgRevealMatch = line.match(/chara(?:Fadein|Move|Talk|Cutin|Put(?:FSR)?)\s+([a-zA-Z0-9]+)/);
         if (imgRevealMatch && imageBindings[imgRevealMatch[1]]) {
           step.showImage = { url: imageBindings[imgRevealMatch[1]] };
+          if (fadeinMatch?.[1] === imgRevealMatch[1]) step.imageFadeInMs = secondsToMs(fadeinMatch[2] || 0);
           currentImage = imgRevealMatch[1];
         }
 
-        // 3) background: [scene 10310] etc.
-        const sceneMatch = line.match(/scene[, ]+([0-9]+)/);
+        const charMoveMatch = line.match(/\[charaMove(?:Return)?\s+([a-zA-Z0-9]+)\s+(-?[0-9]+(?:,-?[0-9]+)?)\s+([0-9]*\.?[0-9]+)/);
+        if (charMoveMatch) {
+          charPositions[charMoveMatch[1]] = charMoveMatch[2];
+          step.charMove = {
+            code: charMoveMatch[1],
+            position: charMoveMatch[2],
+            durationMs: secondsToMs(charMoveMatch[3]),
+          };
+        }
+        const charShakeMatch = line.match(/\[charaShake\s+([a-zA-Z0-9]+)\s+([0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+)\s+(-?[0-9]*\.?[0-9]+)\s+([0-9]*\.?[0-9]+)/);
+        if (charShakeMatch) {
+          step.charShake = {
+            code: charShakeMatch[1],
+            intervalMs: secondsToMs(charShakeMatch[2]),
+            x: Number(charShakeMatch[3]),
+            y: Number(charShakeMatch[4]),
+            durationMs: secondsToMs(charShakeMatch[5]),
+          };
+        }
+
+        // 3) background: [scene 10310] / [scene 10310 2.0].
+        // Le second nombre est la durée de transition, en secondes.
+        const sceneMatch = line.match(/scene(?:,|\s)+([0-9]+)(?:(?:,|\s)+([0-9]*\.?[0-9]+))?/);
         const backMatch = line.match(/(back[0-9]+)/);
         const bgMatch = line.match(/(bg_[a-zA-Z0-9_]+)/);
 
@@ -352,6 +483,9 @@ async function fetchQuestScript(questId) {
 
         if (foundBg && foundBg !== lastBackground) {
           step.background = foundBg;
+          if (sceneMatch?.[2] !== undefined) {
+            step.frameDurationMs = Number(sceneMatch[2]) * 1000;
+          }
           lastBackground = foundBg;
           // Un changement de décor réinitialise la scène : les persos
           // doivent être ré-introduits par charaFadein dans le script
@@ -430,15 +564,18 @@ async function fetchQuestScript(questId) {
             // doit rien afficher.
             if (code && speakerState[code] && visibleChars.has(code)) {
               step.figure = {
+                code,
                 url: speakerState[code].url,
                 face: speakerState[code].currentFace,
               };
+              step.charPosition = charPositions[code] || "1";
               lastShownCode = code;
             }
             // Sinon, si un appel vidéo est en cours, on affiche le perso appelé
             // (effet visio) — typiquement Romani en communication
             else if (commActive) {
-              step.figure = { url: commActive.url, face: commActive.face, comm: true };
+              step.figure = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
+              step.charPosition = "1";
             } else if (lastShownCode && !visibleChars.has(lastShownCode)) {
               // Le perso encore affiché par le lecteur a quitté la scène
               step.hideChar = true;
@@ -457,20 +594,26 @@ async function fetchQuestScript(questId) {
     }
   }
 
-  // Passe finale : une image (CG) sans aucun dialogue avant qu'elle disparaisse
-  // serait auto-sautée (le lecteur ne s'arrête que sur les répliques). On en
-  // fait un point d'arrêt (holdImage) pour laisser le temps de la voir. Une
-  // image suivie d'un dialogue reste « portée » par celui-ci (pas de pause),
-  // et les couches d'image consécutives ne cassent pas la recherche.
+  // Passe finale : un « frame » visuel (image CG ou changement de décor) qui
+  // n'est suivi d'AUCUN dialogue avant le frame suivant serait auto-sauté — le
+  // lecteur ne s'arrête que sur les répliques, donc une rafale de décors/CG
+  // cinématiques file jusqu'au dernier. On en fait un point d'arrêt (holdFrame)
+  // pour laisser le temps de le voir.
+  // - décor : « porté » si une réplique arrive avant le prochain décor ;
+  // - image : « portée » si une réplique arrive avant qu'elle soit cachée /
+  //   remplacée par un perso / un décor (les couches d'image consécutives
+  //   forment un composite et ne coupent pas la recherche).
   for (let i = 0; i < combinedScript.length; i++) {
-    if (!combinedScript[i].showImage) continue;
+    const cur = combinedScript[i];
+    if (!cur.showImage && !cur.background) continue;
     let carried = false;
     for (let j = i + 1; j < combinedScript.length; j++) {
       const s = combinedScript[j];
       if (s.talk || s.choices) { carried = true; break; }
-      if (s.hideImage || s.background || s.showChar || s.hideChar) break;
+      if (s.background) break;
+      if (cur.showImage && (s.hideImage || s.showChar)) break;
     }
-    if (!carried) combinedScript[i].holdImage = true;
+    if (!carried) cur.holdFrame = true;
   }
 
   return combinedScript;
@@ -577,6 +720,265 @@ const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
 audio.volume = 0.5;
 seAudio.volume = 0.8;
+
+const effectUntil = {};
+let screenShakeAnimation = null;
+let charShakeAnimation = null;
+let flashAnimation = null;
+let currentDisplayedCode = null;
+let charAnimationToken = 0;
+let imageAnimationToken = 0;
+let wipeAnimationToken = 0;
+const opacityAnimationTokens = new WeakMap();
+
+function markEffect(name, durationMs, indefinite = false) {
+  effectUntil[name.toLowerCase()] = indefinite ? Infinity : performance.now() + Math.max(0, durationMs);
+}
+
+function stopEffect(name) {
+  effectUntil[name.toLowerCase()] = 0;
+}
+
+function remainingEffect(name) {
+  const end = effectUntil[(name || "").toLowerCase()] || 0;
+  return end === Infinity ? 0 : Math.max(0, end - performance.now());
+}
+
+function cancelAnimation(animation) {
+  if (animation) animation.cancel();
+}
+
+function referenceScale() {
+  return window.innerHeight / 576;
+}
+
+function animateOpacity(element, from, to, durationMs, hideAfter = false) {
+  element.getAnimations().forEach(animation => animation.cancel());
+  const token = (opacityAnimationTokens.get(element) || 0) + 1;
+  opacityAnimationTokens.set(element, token);
+  element.style.display = 'block';
+  element.style.opacity = String(from);
+  const animation = element.animate(
+    [{ opacity: from }, { opacity: to }],
+    { duration: durationMs, easing: 'linear', fill: 'forwards' }
+  );
+  const finish = () => {
+    if (opacityAnimationTokens.get(element) !== token) return;
+    element.style.opacity = String(to);
+    if (hideAfter) element.style.display = 'none';
+    animation.cancel();
+  };
+  animation.finished.then(finish).catch(() => {});
+  setTimeout(finish, durationMs + 20);
+  return animation;
+}
+
+function playFade(effect) {
+  const layer = document.getElementById('fade-layer');
+  layer.style.background = effect.color;
+  const fadingIn = effect.direction === 'fadein';
+  animateOpacity(layer, fadingIn ? 1 : 0, fadingIn ? 0 : 1, effect.durationMs, fadingIn);
+  markEffect('fade', effect.durationMs);
+}
+
+function playFlash(effect) {
+  const layer = document.getElementById('flash-layer');
+  cancelAnimation(flashAnimation);
+  layer.style.display = 'block';
+  const durationMs = Math.max(1, effect.inMs + effect.outMs);
+  flashAnimation = layer.animate(
+    [
+      { opacity: 0, backgroundColor: effect.to },
+      { opacity: 1, backgroundColor: effect.from, offset: effect.inMs / durationMs },
+      { opacity: 0, backgroundColor: effect.to },
+    ],
+    {
+      duration: durationMs,
+      iterations: effect.mode === 'loop' ? Infinity : 1,
+      easing: 'linear',
+      fill: 'forwards',
+    }
+  );
+  if (effect.mode === 'once') {
+    const currentAnimation = flashAnimation;
+    const finish = () => {
+      if (flashAnimation !== currentAnimation) return;
+      layer.style.display = 'none';
+      currentAnimation.cancel();
+      flashAnimation = null;
+    };
+    currentAnimation.finished.then(finish).catch(() => {});
+    setTimeout(finish, durationMs + 20);
+    markEffect('flash', durationMs);
+  } else {
+    markEffect('flash', 0, true);
+  }
+}
+
+function stopFlash(durationMs) {
+  cancelAnimation(flashAnimation);
+  flashAnimation = null;
+  const layer = document.getElementById('flash-layer');
+  animateOpacity(layer, Number(getComputedStyle(layer).opacity) || 1, 0, durationMs, true);
+  markEffect('flash', durationMs);
+}
+
+function wipeClip(type, covered) {
+  const full = 'inset(0 0 0 0)';
+  const emptyByType = {
+    leftToRight: 'inset(0 100% 0 0)',
+    rightToLeft: 'inset(0 0 0 100%)',
+    upToDown: 'inset(0 0 100% 0)',
+    downToUp: 'inset(100% 0 0 0)',
+    rectangleStripLeftToRight: 'inset(0 100% 0 0)',
+    rectangleStripRightToLeft: 'inset(0 0 0 100%)',
+    circleIn: 'circle(0% at 50% 50%)',
+  };
+  return covered ? full : (emptyByType[type] || 'inset(0 100% 0 0)');
+}
+
+function playWipe(effect) {
+  const layer = document.getElementById('wipe-layer');
+  const token = ++wipeAnimationToken;
+  layer.getAnimations().forEach(animation => animation.cancel());
+  layer.style.display = 'block';
+  layer.style.background = '#000';
+  layer.style.opacity = '1';
+  const wipingIn = effect.direction === 'wipein';
+  const finalClip = wipeClip(effect.type, !wipingIn);
+  const animation = layer.animate(
+    [
+      { clipPath: wipeClip(effect.type, wipingIn) },
+      { clipPath: wipeClip(effect.type, !wipingIn) },
+    ],
+    { duration: effect.durationMs, easing: 'linear', fill: 'forwards' }
+  );
+  const finish = () => {
+    if (wipeAnimationToken !== token) return;
+    layer.style.clipPath = finalClip;
+    if (wipingIn) layer.style.display = 'none';
+    animation.cancel();
+  };
+  animation.finished.then(finish).catch(() => {});
+  setTimeout(finish, effect.durationMs + 20);
+  markEffect('wipe', effect.durationMs);
+}
+
+function playWipeFilter(effect) {
+  const layer = document.getElementById('wipe-layer');
+  wipeAnimationToken++;
+  layer.getAnimations().forEach(animation => animation.cancel());
+  layer.style.display = 'block';
+  layer.style.clipPath = 'none';
+  layer.style.background = effect.type === 'circleIn'
+    ? 'radial-gradient(circle at center, transparent 35%, rgba(0,0,0,0.96) 72%)'
+    : 'rgba(0,0,0,0.75)';
+  animateOpacity(layer, 0, 1, effect.durationMs);
+  markEffect('wipe', effect.durationMs);
+}
+
+function stopWipe() {
+  wipeAnimationToken++;
+  const layer = document.getElementById('wipe-layer');
+  layer.getAnimations().forEach(animation => animation.cancel());
+  layer.style.display = 'none';
+  layer.style.clipPath = '';
+  layer.style.background = '#000';
+  stopEffect('wipe');
+}
+
+function shakeElement(element, effect, currentAnimation) {
+  cancelAnimation(currentAnimation);
+  const scale = referenceScale();
+  const x = effect.x * scale;
+  const y = effect.y * scale;
+  const cycleMs = Math.max(20, effect.intervalMs * 2);
+  return element.animate(
+    [
+      { transform: `translate(${-x}px, ${-y}px)` },
+      { transform: `translate(${x}px, ${y}px)` },
+      { transform: `translate(${-x}px, ${y}px)` },
+      { transform: `translate(${x}px, ${-y}px)` },
+    ],
+    {
+      duration: cycleMs,
+      iterations: effect.durationMs > 0 ? Math.max(1, Math.ceil(effect.durationMs / cycleMs)) : Infinity,
+      easing: 'steps(1)',
+    }
+  );
+}
+
+function playScreenShake(effect) {
+  screenShakeAnimation = shakeElement(document.getElementById('visual-stage'), effect, screenShakeAnimation);
+  markEffect('shake', effect.durationMs, effect.durationMs === 0);
+}
+
+function stopScreenShake() {
+  cancelAnimation(screenShakeAnimation);
+  screenShakeAnimation = null;
+  stopEffect('shake');
+}
+
+function playCharShake(effect) {
+  if (effect.code !== currentDisplayedCode) return;
+  charShakeAnimation = shakeElement(document.getElementById('char-motion'), effect, charShakeAnimation);
+  markEffect('charashake', effect.durationMs, effect.durationMs === 0);
+}
+
+function moveCamera(camera) {
+  const layer = document.getElementById('camera-layer');
+  const scale = referenceScale();
+  layer.style.transition = `transform ${camera.durationMs}ms ease-in-out`;
+  layer.style.transform = `translate(${camera.x * scale}px, ${camera.y * scale}px) scale(${camera.scale})`;
+  markEffect('camera', camera.durationMs);
+}
+
+function charPosition(position) {
+  if (String(position).includes(',')) {
+    const [x, y] = String(position).split(',').map(Number);
+    return { x: x * referenceScale(), y: y * referenceScale() };
+  }
+  const slot = Number(position);
+  return { x: ((Number.isFinite(slot) ? slot : 1) - 1) * 220 * referenceScale(), y: 0 };
+}
+
+function moveCharacter(position, durationMs) {
+  const container = document.getElementById('char-container');
+  const target = charPosition(position);
+  container.style.transition = `transform ${durationMs}ms ease-in-out, opacity ${durationMs}ms linear`;
+  container.style.setProperty('--char-x', `${target.x}px`);
+  container.style.setProperty('--char-y', `${target.y}px`);
+  markEffect('charamove', durationMs);
+}
+
+function resetVisualEffects() {
+  stopScreenShake();
+  cancelAnimation(charShakeAnimation);
+  charShakeAnimation = null;
+  cancelAnimation(flashAnimation);
+  flashAnimation = null;
+  Object.keys(effectUntil).forEach(key => { effectUntil[key] = 0; });
+
+  const camera = document.getElementById('camera-layer');
+  camera.style.transition = 'none';
+  camera.style.transform = '';
+  const char = document.getElementById('char-container');
+  char.style.transition = 'none';
+  char.style.opacity = '1';
+  char.style.setProperty('--char-x', '0px');
+  char.style.setProperty('--char-y', '0px');
+  currentDisplayedCode = null;
+  charAnimationToken++;
+  imageAnimationToken++;
+  wipeAnimationToken++;
+
+  for (const id of ['wipe-layer', 'fade-layer', 'flash-layer']) {
+    const layer = document.getElementById(id);
+    layer.getAnimations().forEach(animation => animation.cancel());
+    layer.style.display = 'none';
+    layer.style.opacity = '0';
+  }
+}
 
 async function init() {
   try {
@@ -731,6 +1133,7 @@ async function loadQuest(id) {
   currentQuestId = id;
   document.getElementById('end-overlay').classList.remove('active');
   // reset des couches visuelles entre deux quêtes
+  resetVisualEffects();
   document.getElementById('cut-image').style.display = 'none';
   document.getElementById('text-box').classList.remove('msg-hidden');
   audio.src = '';
@@ -807,24 +1210,95 @@ async function run() {
 
   if (line.se) { seAudio.src = line.se; seAudio.play().catch(() => {}); }
 
-  if (line.background) document.getElementById('bg-layer').style.backgroundImage = `url('${line.background}')`;
+  if (line.background) {
+    document.getElementById('bg-layer').style.backgroundImage = `url('${line.background}')`;
+    if (line.frameDurationMs !== undefined) markEffect('scene', line.frameDurationMs);
+  }
 
-  if (line.hideChar) document.getElementById('char-container').style.display = 'none';
+  if (line.screenFade) playFade(line.screenFade);
+  if (line.flash) playFlash(line.flash);
+  if (line.flashOutMs !== undefined) stopFlash(line.flashOutMs);
+  if (line.wipe) playWipe(line.wipe);
+  if (line.wipeFilter) playWipeFilter(line.wipeFilter);
+  if (line.wipeOff) stopWipe();
+  if (line.screenShake) playScreenShake(line.screenShake);
+  if (line.screenShakeStop) stopScreenShake();
+  if (line.camera) moveCamera(line.camera);
 
-  if (line.hideImage) document.getElementById('cut-image').style.display = 'none';
+  if (line.hideChar) {
+    const char = document.getElementById('char-container');
+    const token = ++charAnimationToken;
+    if (line.charFadeOutMs > 0) {
+      const hiddenCode = currentDisplayedCode;
+      animateOpacity(char, Number(getComputedStyle(char).opacity) || 1, 0, line.charFadeOutMs);
+      markEffect('charafade', line.charFadeOutMs);
+      setTimeout(() => {
+        if (charAnimationToken === token && currentDisplayedCode === hiddenCode) {
+          char.style.display = 'none';
+          char.style.opacity = '1';
+          currentDisplayedCode = null;
+        }
+      }, line.charFadeOutMs);
+    } else {
+      char.style.display = 'none';
+      currentDisplayedCode = null;
+    }
+  }
+
+  if (line.hideImage) {
+    const image = document.getElementById('cut-image');
+    const token = ++imageAnimationToken;
+    if (line.imageFadeOutMs > 0) {
+      animateOpacity(image, Number(getComputedStyle(image).opacity) || 1, 0, line.imageFadeOutMs);
+      markEffect('charafade', line.imageFadeOutMs);
+      setTimeout(() => {
+        if (imageAnimationToken === token) {
+          image.style.display = 'none';
+          image.style.opacity = '1';
+        }
+      }, line.imageFadeOutMs);
+    } else {
+      image.style.display = 'none';
+    }
+  }
 
   if (line.showChar) {
+    charAnimationToken++;
     document.getElementById('cut-image').style.display = 'none';
+    const char = document.getElementById('char-container');
+    if (line.charPosition !== undefined) moveCharacter(line.charPosition, 0);
+    if (line.charFadeInMs > 0 || line.charCrossFadeMs > 0) char.style.opacity = '0';
     await Compositor.update(line.showChar.url, line.showChar.face, line.showChar.comm);
+    currentDisplayedCode = line.showChar.code || currentDisplayedCode;
+    const fadeMs = line.charFadeInMs || line.charCrossFadeMs || 0;
+    if (fadeMs > 0) {
+      animateOpacity(char, 0, 1, fadeMs);
+      markEffect('charafade', fadeMs);
+    } else {
+      char.style.opacity = '1';
+    }
   }
 
   // Image (cut-in / CG) : on cache le perso pendant qu'on l'affiche (v1 : une à la fois)
   if (line.showImage) {
+    imageAnimationToken++;
     document.getElementById('char-container').style.display = 'none';
+    currentDisplayedCode = null;
     const ci = document.getElementById('cut-image');
     ci.style.backgroundImage = `url("${line.showImage.url}")`;
     ci.style.display = 'block';
+    if (line.imageFadeInMs > 0) {
+      animateOpacity(ci, 0, 1, line.imageFadeInMs);
+      markEffect('charafade', line.imageFadeInMs);
+    } else {
+      ci.style.opacity = '1';
+    }
   }
+
+  if (line.charMove && line.charMove.code === currentDisplayedCode) {
+    moveCharacter(line.charMove.position, line.charMove.durationMs);
+  }
+  if (line.charShake) playCharShake(line.charShake);
 
   if (line.textBox === 'off') document.getElementById('text-box').classList.add('msg-hidden');
   else if (line.textBox === 'on') document.getElementById('text-box').classList.remove('msg-hidden');
@@ -837,13 +1311,25 @@ async function run() {
     document.getElementById('text').innerText = line.talk.detail;
     if (line.figure) {
       document.getElementById('cut-image').style.display = 'none';
+      if (line.charPosition !== undefined) moveCharacter(line.charPosition, 0);
       await Compositor.update(line.figure.url, line.figure.face, line.figure.comm);
+      currentDisplayedCode = line.figure.code || currentDisplayedCode;
     }
     autoSkip = false;
   }
 
-  if (autoSkip && line.holdImage) { isProcessing = false; } // pause sur une CG sans dialogue
-  else if (autoSkip) { isProcessing = true; setTimeout(() => { idx++; run(); }, 20); }
+  if (autoSkip) {
+    let dwell = 20;
+    if (line.waitMs !== undefined) dwell = line.waitMs;
+    else if (line.waitFor) dwell = remainingEffect(line.waitFor);
+    else if (line.holdFrame) dwell = line.frameDurationMs ?? (line.showImage ? 1200 : 650);
+
+    // Les commandes automatiques respectent la timeline, mais un clic peut
+    // toujours passer immédiatement à l'étape suivante.
+    isProcessing = false;
+    const myIdx = idx;
+    setTimeout(() => { if (idx === myIdx && idx < sc.length) { idx++; run(); } }, dwell);
+  }
   else { isProcessing = false; }
 }
 
@@ -867,6 +1353,7 @@ function prev() {
 function stop() {
   audio.pause();
   audio.src = '';
+  resetVisualEffects();
   document.getElementById('reader-container').style.display = 'none';
   document.getElementById('end-overlay').classList.remove('active');
   document.getElementById('options-overlay').classList.remove('active');
