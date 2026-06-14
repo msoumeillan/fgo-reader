@@ -457,20 +457,26 @@ async function fetchQuestScript(questId) {
     }
   }
 
-  // Passe finale : une image (CG) sans aucun dialogue avant qu'elle disparaisse
-  // serait auto-sautée (le lecteur ne s'arrête que sur les répliques). On en
-  // fait un point d'arrêt (holdImage) pour laisser le temps de la voir. Une
-  // image suivie d'un dialogue reste « portée » par celui-ci (pas de pause),
-  // et les couches d'image consécutives ne cassent pas la recherche.
+  // Passe finale : un « frame » visuel (image CG ou changement de décor) qui
+  // n'est suivi d'AUCUN dialogue avant le frame suivant serait auto-sauté — le
+  // lecteur ne s'arrête que sur les répliques, donc une rafale de décors/CG
+  // cinématiques file jusqu'au dernier. On en fait un point d'arrêt (holdFrame)
+  // pour laisser le temps de le voir.
+  // - décor : « porté » si une réplique arrive avant le prochain décor ;
+  // - image : « portée » si une réplique arrive avant qu'elle soit cachée /
+  //   remplacée par un perso / un décor (les couches d'image consécutives
+  //   forment un composite et ne coupent pas la recherche).
   for (let i = 0; i < combinedScript.length; i++) {
-    if (!combinedScript[i].showImage) continue;
+    const cur = combinedScript[i];
+    if (!cur.showImage && !cur.background) continue;
     let carried = false;
     for (let j = i + 1; j < combinedScript.length; j++) {
       const s = combinedScript[j];
       if (s.talk || s.choices) { carried = true; break; }
-      if (s.hideImage || s.background || s.showChar || s.hideChar) break;
+      if (s.background) break;
+      if (cur.showImage && (s.hideImage || s.showChar)) break;
     }
-    if (!carried) combinedScript[i].holdImage = true;
+    if (!carried) cur.holdFrame = true;
   }
 
   return combinedScript;
@@ -842,7 +848,15 @@ async function run() {
     autoSkip = false;
   }
 
-  if (autoSkip && line.holdImage) { isProcessing = false; } // pause sur une CG sans dialogue
+  if (autoSkip && line.holdFrame) {
+    // Frame visuel sans dialogue (décor/CG d'une séquence cinématique) : on le
+    // laisse à l'écran un court instant puis on avance seul, pour qu'il soit vu
+    // au lieu d'être sauté. Un clic avance immédiatement.
+    isProcessing = false;
+    const myIdx = idx;
+    const dwell = line.showImage ? 1200 : 650;
+    setTimeout(() => { if (idx === myIdx && idx < sc.length) { idx++; run(); } }, dwell);
+  }
   else if (autoSkip) { isProcessing = true; setTimeout(() => { idx++; run(); }, 20); }
   else { isProcessing = false; }
 }
