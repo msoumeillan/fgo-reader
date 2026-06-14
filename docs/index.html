@@ -102,8 +102,10 @@
         #reader-container { display: none; width: 100%; height: 100%; position: relative; }
         #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; transition: background-image 0.5s ease-in-out; }
 
-        /* Image plein écran (imageSet : cut-in / CG) */
-        #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center; background-size: contain; display: none; pointer-events: none; }
+        /* Image de scène (imageSet : cut-in / CG). Ces images partagent la même
+           largeur de référence (1024) que le décor : on les affiche donc à la
+           largeur de l'écran, ancrées en haut, pour les composer comme le jeu. */
+        #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center top; background-size: 100% auto; display: none; pointer-events: none; }
 
         #char-container {
             position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
