@@ -137,6 +137,7 @@ async function fetchQuestScript(questId) {
       let stepBuffer = [];
       let visibleChars = new Set();
       let lastShownCode = null; // code du perso actuellement affiché par le lecteur
+      let commActive = null;    // appel vidéo en cours : { url, face }
 
       for (let line of lines) {
         line = (line || "").trim();
@@ -185,6 +186,37 @@ async function fetchQuestScript(questId) {
         }
 
         let step = {};
+
+        // 0) communicationChara / Loop : appel vidéo (sprite spécial bleu
+        // 98003xxx + effet transparence/scanlines). Le dernier nombre = visage.
+        const commMatch = line.match(/communicationChara(?:Loop)?\s+([0-9]+)((?:\s+\d+)*)\s*\]/);
+        if (commMatch) {
+          const charId = commMatch[1];
+          const extra = commMatch[2].trim().split(/\s+/).filter(Boolean).map(Number);
+          const face = extra.length ? extra[extra.length - 1] : 0;
+          commActive = { url: `${ASSETS}/${REGION}/CharaFigure/${charId}/${charId}_merged.png`, face };
+          step.showChar = { url: commActive.url, face: commActive.face, comm: true };
+          lastShownCode = null;
+          stepBuffer.push(step);
+          continue;
+        }
+        // communicationCharaFace N : change l'expression dans l'appel
+        const commFaceMatch = line.match(/communicationCharaFace\s+([0-9]+)/);
+        if (commFaceMatch) {
+          if (commActive) {
+            commActive.face = parseInt(commFaceMatch[1], 10);
+            step.showChar = { url: commActive.url, face: commActive.face, comm: true };
+            stepBuffer.push(step);
+          }
+          continue;
+        }
+        // communicationCharaClear : fin de l'appel
+        if (line.includes("communicationCharaClear")) {
+          commActive = null;
+          step.hideChar = true;
+          stepBuffer.push(step);
+          continue;
+        }
 
         // 1) charaSet : [charaSet A 98001000 0 Mash]
         const charaMatch = line.match(
@@ -298,6 +330,7 @@ async function fetchQuestScript(questId) {
           // doivent être ré-introduits par charaFadein dans le script
           visibleChars.clear();
           lastShownCode = null;
+          commActive = null;
           step.hideChar = true;
         }
 
@@ -358,15 +391,20 @@ async function fetchQuestScript(questId) {
             // fallback via nom (si le code absent)
             if (!code) code = nameToCode[currentSpeakerName];
 
-            // Le sprite ne s'affiche que si le perso est réellement à
-            // l'écran (charaFadein). Un perso qui parle hors écran
-            // (communication, narration...) ne doit rien afficher.
+            // Priorité au perso réellement à l'écran quand c'est lui qui parle
+            // (charaFadein). Un perso qui parle hors écran (narration...) ne
+            // doit rien afficher.
             if (code && speakerState[code] && visibleChars.has(code)) {
               step.figure = {
                 url: speakerState[code].url,
                 face: speakerState[code].currentFace,
               };
               lastShownCode = code;
+            }
+            // Sinon, si un appel vidéo est en cours, on affiche le perso appelé
+            // (effet visio) — typiquement Romani en communication
+            else if (commActive) {
+              step.figure = { url: commActive.url, face: commActive.face, comm: true };
             } else if (lastShownCode && !visibleChars.has(lastShownCode)) {
               // Le perso encore affiché par le lecteur a quitté la scène
               step.hideChar = true;
@@ -395,14 +433,15 @@ async function fetchQuestScript(questId) {
 let lastFigure = null;
 
 const Compositor = {
-  async update(url, faceIndex) {
+  async update(url, faceIndex, isComm = false) {
     const container = document.getElementById('char-container');
     const bodyDiv = document.getElementById('char-body');
     const faceDiv = document.getElementById('char-face');
+    const scan = document.getElementById('char-scanlines');
     const match = url.match(/\/([0-9]+)_merged\.png/);
     const charID = match ? match[1] : null;
     const info = charID ? await fetchFigureInfo(charID) : null;
-    lastFigure = { url, faceIndex };
+    lastFigure = { url, faceIndex, isComm };
 
     // En paysage : calé sur la hauteur (comme le jeu). En portrait : on
     // réduit pour que le buste (~420px au centre du canvas) tienne en largeur
@@ -415,12 +454,35 @@ const Compositor = {
     const bodyH = info ? info.bodyHeight : 768;
     const bodyLeft = ((1024 - figW) / 2 + (info ? info.offsetX : 0)) * S;
 
+    // Position verticale du corps. Les sprites de communication (visio) sont
+    // dessinés bien plus haut dans leur image (faceY ~21 au lieu de ~149) :
+    // avec le même offsetY que d'habitude la tête sortirait de l'écran. On
+    // recentre donc en fonction du faceY (sans effet sur les figures normales
+    // dont faceY vaut déjà ~149).
+    const STD_FACE_Y = 149;
+    let bodyTopPx = -offY * S;
+    if (isComm && info) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
+
     bodyDiv.style.backgroundImage = `url("${url}")`;
     bodyDiv.style.width = `${figW * S}px`;
     bodyDiv.style.height = `${bodyH * S}px`;
     bodyDiv.style.left = `${bodyLeft}px`;
-    bodyDiv.style.top = `${-offY * S}px`;
+    bodyDiv.style.top = `${bodyTopPx}px`;
     bodyDiv.style.backgroundSize = `${figW * S}px auto`;
+
+    // Effet "appel vidéo" : transparence (via classe) + calque de scanlines
+    // calé sur la boîte du corps
+    if (isComm) {
+      container.classList.add('comm');
+      scan.style.left = `${bodyLeft}px`;
+      scan.style.top = `${bodyTopPx}px`;
+      scan.style.width = `${figW * S}px`;
+      scan.style.height = `${bodyH * S}px`;
+      scan.style.display = 'block';
+    } else {
+      container.classList.remove('comm');
+      scan.style.display = 'none';
+    }
 
     const face = parseInt(faceIndex);
     if (!info || !Number.isFinite(face) || face <= 0) {
@@ -443,7 +505,7 @@ const Compositor = {
     faceDiv.style.width = `${info.w * S}px`;
     faceDiv.style.height = `${info.h * S}px`;
     faceDiv.style.left = `${info.faceX * S + bodyLeft}px`;
-    faceDiv.style.top = `${(info.faceY - offY) * S}px`;
+    faceDiv.style.top = `${bodyTopPx + info.faceY * S}px`;
     faceDiv.style.backgroundSize = `${figW * S}px auto`;
     faceDiv.style.backgroundPosition = `${-(col * info.w * S)}px ${-(sheetY * S)}px`;
     faceDiv.style.display = 'block';
@@ -452,7 +514,7 @@ const Compositor = {
 };
 window.addEventListener('resize', () => {
   if (lastFigure && document.getElementById('char-container').style.display === 'block') {
-    Compositor.update(lastFigure.url, lastFigure.faceIndex);
+    Compositor.update(lastFigure.url, lastFigure.faceIndex, lastFigure.isComm);
   }
 });
 
@@ -670,14 +732,14 @@ async function run() {
 
   if (line.hideChar) document.getElementById('char-container').style.display = 'none';
 
-  if (line.showChar) await Compositor.update(line.showChar.url, line.showChar.face);
+  if (line.showChar) await Compositor.update(line.showChar.url, line.showChar.face, line.showChar.comm);
 
   if (line.choices) { showChoices(line.choices); isProcessing = true; return; }
 
   if (line.talk) {
     document.getElementById('speaker').innerText = line.talk.speakerName;
     document.getElementById('text').innerText = line.talk.detail;
-    if (line.figure) await Compositor.update(line.figure.url, line.figure.face);
+    if (line.figure) await Compositor.update(line.figure.url, line.figure.face, line.figure.comm);
     autoSkip = false;
   }
 
