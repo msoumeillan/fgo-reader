@@ -329,9 +329,9 @@ async function fetchQuestScript(questId) {
           }
         }
 
-        // Image (imageSet) révélée ou déplacée → on l'affiche (une à la fois).
-        // [charaTalk on/off] est un réglage global (pas un code d'image).
-        const imgRevealMatch = line.match(/chara(?:Fadein|Move|Talk|Put(?:FSR)?)\s+([a-zA-Z0-9]+)/);
+        // Image (imageSet) révélée, déplacée ou en cut-in → on l'affiche (une à
+        // la fois). [charaTalk on/off] est un réglage global (pas un code d'image).
+        const imgRevealMatch = line.match(/chara(?:Fadein|Move|Talk|Cutin|Put(?:FSR)?)\s+([a-zA-Z0-9]+)/);
         if (imgRevealMatch && imageBindings[imgRevealMatch[1]]) {
           step.showImage = { url: imageBindings[imgRevealMatch[1]] };
           currentImage = imgRevealMatch[1];
@@ -455,6 +455,22 @@ async function fetchQuestScript(questId) {
     } catch (err) {
       console.error(`Erreur lecture script: ${err.message}`);
     }
+  }
+
+  // Passe finale : une image (CG) sans aucun dialogue avant qu'elle disparaisse
+  // serait auto-sautée (le lecteur ne s'arrête que sur les répliques). On en
+  // fait un point d'arrêt (holdImage) pour laisser le temps de la voir. Une
+  // image suivie d'un dialogue reste « portée » par celui-ci (pas de pause),
+  // et les couches d'image consécutives ne cassent pas la recherche.
+  for (let i = 0; i < combinedScript.length; i++) {
+    if (!combinedScript[i].showImage) continue;
+    let carried = false;
+    for (let j = i + 1; j < combinedScript.length; j++) {
+      const s = combinedScript[j];
+      if (s.talk || s.choices) { carried = true; break; }
+      if (s.hideImage || s.background || s.showChar || s.hideChar) break;
+    }
+    if (!carried) combinedScript[i].holdImage = true;
   }
 
   return combinedScript;
@@ -826,7 +842,8 @@ async function run() {
     autoSkip = false;
   }
 
-  if (autoSkip) { isProcessing = true; setTimeout(() => { idx++; run(); }, 20); }
+  if (autoSkip && line.holdImage) { isProcessing = false; } // pause sur une CG sans dialogue
+  else if (autoSkip) { isProcessing = true; setTimeout(() => { idx++; run(); }, 20); }
   else { isProcessing = false; }
 }
 
