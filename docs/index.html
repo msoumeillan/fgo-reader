@@ -108,6 +108,14 @@
         }
         #char-body { position: absolute; background-repeat: no-repeat; }
         #char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
+        /* Effet "appel vidéo" (communicationChara) : transparence + scanlines */
+        #char-container.comm #char-body, #char-container.comm #char-face { opacity: 0.5; }
+        #char-scanlines {
+            position: absolute; display: none; pointer-events: none; z-index: 7;
+            background: repeating-linear-gradient(0deg, rgba(170,210,255,0.20) 0px, rgba(170,210,255,0.20) 1px, transparent 2px, transparent 4px);
+            mix-blend-mode: screen; animation: comm-scan 5s linear infinite;
+        }
+        @keyframes comm-scan { from { background-position: 0 0; } to { background-position: 0 64px; } }
 
         #text-box {
             position: absolute; bottom: 0; left: 0; right: 0; min-height: 19%;
@@ -219,6 +227,7 @@
         <div id="char-container">
             <div id="char-body"></div>
             <div id="char-face"></div>
+            <div id="char-scanlines"></div>
         </div>
         <div id="text-box" onclick="handleClick(event)">
             <div id="speaker-tab"><div id="speaker"></div></div>
