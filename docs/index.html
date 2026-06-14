@@ -99,8 +99,11 @@
         #quest-log { color: #f1c40f; font-size: 0.82rem; text-align: center; min-height: 16px; }
 
         /* === READER === */
-        #reader-container { display: none; width: 100%; height: 100%; position: relative; }
-        #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; transition: background-image 0.5s ease-in-out; }
+        #reader-container { display: none; width: 100%; height: 100%; position: relative; overflow: hidden; }
+        #visual-stage, #camera-layer { position: absolute; inset: 0; pointer-events: none; }
+        #visual-stage { z-index: 0; }
+        #camera-layer { transform-origin: center center; }
+        #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; }
 
         /* Image de scène (imageSet : cut-in / CG). Ces images partagent la même
            largeur de référence (1024) que le décor : on les affiche donc à la
@@ -108,9 +111,10 @@
         #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center top; background-size: 100% auto; display: none; pointer-events: none; }
 
         #char-container {
-            position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
+            position: absolute; bottom: 0; left: 50%; transform: translate(calc(-50% + var(--char-x, 0px)), var(--char-y, 0px));
             overflow: hidden; pointer-events: none; z-index: 5; display: none;
         }
+        #char-motion { position: absolute; inset: 0; }
         #char-body { position: absolute; background-repeat: no-repeat; }
         #char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
         /* Effet "appel vidéo" (communicationChara) : transparence + scanlines */
@@ -121,6 +125,13 @@
             mix-blend-mode: screen; animation: comm-scan 5s linear infinite;
         }
         @keyframes comm-scan { from { background-position: 0 0; } to { background-position: 0 64px; } }
+
+        #wipe-layer, #fade-layer, #flash-layer {
+            position: absolute; inset: 0; display: none; pointer-events: none;
+        }
+        #wipe-layer { z-index: 7; background: #000; }
+        #fade-layer { z-index: 8; background: #000; opacity: 0; }
+        #flash-layer { z-index: 9; opacity: 0; }
 
         #text-box {
             position: absolute; bottom: 0; left: 0; right: 0; min-height: 19%;
@@ -231,13 +242,22 @@
                 <button id="btn-back-menu" onclick="stop()">Retour au menu</button>
             </div>
         </div>
-        <div id="bg-layer"></div>
-        <div id="cut-image"></div>
-        <div id="char-container">
-            <div id="char-body"></div>
-            <div id="char-face"></div>
-            <div id="char-scanlines"></div>
+        <div id="visual-stage">
+            <div id="camera-layer">
+                <div id="bg-layer"></div>
+                <div id="cut-image"></div>
+                <div id="char-container">
+                    <div id="char-motion">
+                        <div id="char-body"></div>
+                        <div id="char-face"></div>
+                        <div id="char-scanlines"></div>
+                    </div>
+                </div>
+            </div>
         </div>
+        <div id="wipe-layer"></div>
+        <div id="fade-layer"></div>
+        <div id="flash-layer"></div>
         <div id="text-box" onclick="handleClick(event)">
             <div id="speaker-tab"><div id="speaker"></div></div>
             <div id="text"></div>
