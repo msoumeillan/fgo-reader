@@ -614,8 +614,43 @@ async function showQuestScreen(war) {
   banner.onerror = () => { banner.style.display = 'none'; };
 
   container.innerHTML = '';
+
+  const makeItem = (quest) => {
+    const item = document.createElement('div');
+    item.className = 'quest-item';
+    item.textContent = quest.name;
+    item.onclick = () => {
+      selectedQuestId = quest.id;
+      go();
+    };
+    return item;
+  };
+
+  // Remonte en haut les quêtes-charnières d'histoire (prologue / intro / outro),
+  // souvent enterrées tout en bas de la liste, surtout dans les Lostbelts.
+  const isBridge = (name) => /^(prologue|intro|outro)/i.test(name || '');
+  const bridge = [];
+  detail.spots.forEach(spot => (spot.quests || []).forEach(q => { if (isBridge(q.name)) bridge.push(q); }));
+  if (bridge.length) {
+    // prologue/intro d'abord, puis outro, puis par identifiant
+    bridge.sort((a, b) => {
+      const pa = /^outro/i.test(a.name) ? 1 : 0, pb = /^outro/i.test(b.name) ? 1 : 0;
+      return pa - pb || a.id - b.id;
+    });
+    const group = document.createElement('div');
+    group.className = 'spot-group';
+    const sn = document.createElement('div');
+    sn.className = 'spot-name';
+    sn.textContent = 'Prologue / Intro';
+    group.appendChild(sn);
+    bridge.forEach(quest => group.appendChild(makeItem(quest)));
+    container.appendChild(group);
+  }
+  const movedIds = new Set(bridge.map(q => q.id));
+
   detail.spots.forEach(spot => {
-    if (!spot.quests || spot.quests.length === 0) return;
+    const quests = (spot.quests || []).filter(q => !movedIds.has(q.id));
+    if (quests.length === 0) return;
     const group = document.createElement('div');
     group.className = 'spot-group';
     if (spot.name) {
@@ -624,16 +659,7 @@ async function showQuestScreen(war) {
       sn.textContent = spot.name;
       group.appendChild(sn);
     }
-    spot.quests.forEach(quest => {
-      const item = document.createElement('div');
-      item.className = 'quest-item';
-      item.textContent = quest.name;
-      item.onclick = () => {
-        selectedQuestId = quest.id;
-        go();
-      };
-      group.appendChild(item);
-    });
+    quests.forEach(quest => group.appendChild(makeItem(quest)));
     container.appendChild(group);
   });
 }
