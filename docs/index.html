@@ -102,6 +102,9 @@
         #reader-container { display: none; width: 100%; height: 100%; position: relative; }
         #bg-layer { width: 100%; height: 100%; background-size: cover; background-position: center; position: absolute; top: 0; left: 0; z-index: 0; transition: background-image 0.5s ease-in-out; }
 
+        /* Image plein écran (imageSet : cut-in / CG) */
+        #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center; background-size: contain; display: none; pointer-events: none; }
+
         #char-container {
             position: absolute; bottom: 0; left: 50%; transform: translateX(-50%);
             overflow: hidden; pointer-events: none; z-index: 5; display: none;
@@ -136,6 +139,9 @@
         }
         #speaker { color: #c8ddff; font-weight: bold; font-size: clamp(0.9rem, 2.6vmin, 1.15rem); letter-spacing: 0.04em; text-shadow: 0 0 8px rgba(100,160,255,0.6); }
         #text { font-size: clamp(0.95rem, 3.2vmin, 1.35rem); line-height: 1.5; color: #eef2ff; text-shadow: 1px 1px 3px rgba(0,0,10,0.9); }
+        /* messageOff : on masque le contenu de la boîte mais on garde la zone cliquable */
+        #text-box.msg-hidden { background: transparent; border-top: none; box-shadow: none; }
+        #text-box.msg-hidden #speaker-tab, #text-box.msg-hidden #text, #text-box.msg-hidden #next-icon { visibility: hidden; }
         #next-icon {
             position: absolute; bottom: calc(8px + env(safe-area-inset-bottom)); right: 16px; width: 22px; height: 22px;
             border: 2px solid #7ab0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center;
@@ -224,6 +230,7 @@
             </div>
         </div>
         <div id="bg-layer"></div>
+        <div id="cut-image"></div>
         <div id="char-container">
             <div id="char-body"></div>
             <div id="char-face"></div>

@@ -138,6 +138,8 @@ async function fetchQuestScript(questId) {
       let visibleChars = new Set();
       let lastShownCode = null; // code du perso actuellement affiché par le lecteur
       let commActive = null;    // appel vidéo en cours : { url, face }
+      let imageBindings = {};   // code -> URL d'image (imageSet)
+      let currentImage = null;  // code de l'image actuellement affichée
 
       for (let line of lines) {
         line = (line || "").trim();
@@ -218,6 +220,18 @@ async function fetchQuestScript(questId) {
           continue;
         }
 
+        // imageSet / verticalImageSet / horizontalImageSet : lie un code à une
+        // image (cut-in, CG) affichée ensuite via charaFadein/charaMove
+        const imageSetMatch = line.match(/(?:imageSet|verticalImageSet|horizontalImageSet)\s+([a-zA-Z0-9]+)\s+([a-zA-Z0-9_]+)/);
+        if (imageSetMatch) {
+          imageBindings[imageSetMatch[1]] = `${ASSETS}/${REGION}/Image/${imageSetMatch[2]}/${imageSetMatch[2]}.png`;
+          continue;
+        }
+        // messageOff / messageOn : cache / réaffiche la boîte de dialogue
+        // (souvent pendant l'affichage plein écran d'une image)
+        if (line.includes("messageOff")) { step.textBox = 'off'; stepBuffer.push(step); continue; }
+        if (line.includes("messageOn")) { step.textBox = 'on'; stepBuffer.push(step); continue; }
+
         // 1) charaSet : [charaSet A 98001000 0 Mash]
         const charaMatch = line.match(
           /charaSet\s+([a-zA-Z0-9]+)\s+([0-9]+)\s+([0-9]+)\s+(.+?)(?:\]|$)/
@@ -268,13 +282,18 @@ async function fetchQuestScript(questId) {
           continue;
         }
 
-        // 2b) charaFadeout : personnage qui disparaît
+        // 2b) charaFadeout : personnage (ou image) qui disparaît
         const fadeoutMatch = line.match(/charaFadeout\s+([a-zA-Z0-9]+)/);
         if (fadeoutMatch) {
-          visibleChars.delete(fadeoutMatch[1]);
+          const outCode = fadeoutMatch[1];
+          visibleChars.delete(outCode);
           if (visibleChars.size === 0) {
             step.hideChar = true;
             lastShownCode = null;
+          }
+          if (outCode === currentImage) {
+            step.hideImage = true;
+            currentImage = null;
           }
         }
 
@@ -310,6 +329,14 @@ async function fetchQuestScript(questId) {
           }
         }
 
+        // Image (imageSet) révélée ou déplacée → on l'affiche (une à la fois).
+        // [charaTalk on/off] est un réglage global (pas un code d'image).
+        const imgRevealMatch = line.match(/chara(?:Fadein|Move|Talk|Put(?:FSR)?)\s+([a-zA-Z0-9]+)/);
+        if (imgRevealMatch && imageBindings[imgRevealMatch[1]]) {
+          step.showImage = { url: imageBindings[imgRevealMatch[1]] };
+          currentImage = imgRevealMatch[1];
+        }
+
         // 3) background: [scene 10310] etc.
         const sceneMatch = line.match(/scene[, ]+([0-9]+)/);
         const backMatch = line.match(/(back[0-9]+)/);
@@ -331,7 +358,9 @@ async function fetchQuestScript(questId) {
           visibleChars.clear();
           lastShownCode = null;
           commActive = null;
+          currentImage = null;
           step.hideChar = true;
+          step.hideImage = true;
         }
 
         // 4) BGM
@@ -685,6 +714,9 @@ function setVolume(v) { audio.volume = v / 100; document.getElementById('vol-val
 async function loadQuest(id) {
   currentQuestId = id;
   document.getElementById('end-overlay').classList.remove('active');
+  // reset des couches visuelles entre deux quêtes
+  document.getElementById('cut-image').style.display = 'none';
+  document.getElementById('text-box').classList.remove('msg-hidden');
   audio.src = '';
   audio.load();
   let script;
@@ -763,14 +795,34 @@ async function run() {
 
   if (line.hideChar) document.getElementById('char-container').style.display = 'none';
 
-  if (line.showChar) await Compositor.update(line.showChar.url, line.showChar.face, line.showChar.comm);
+  if (line.hideImage) document.getElementById('cut-image').style.display = 'none';
+
+  if (line.showChar) {
+    document.getElementById('cut-image').style.display = 'none';
+    await Compositor.update(line.showChar.url, line.showChar.face, line.showChar.comm);
+  }
+
+  // Image (cut-in / CG) : on cache le perso pendant qu'on l'affiche (v1 : une à la fois)
+  if (line.showImage) {
+    document.getElementById('char-container').style.display = 'none';
+    const ci = document.getElementById('cut-image');
+    ci.style.backgroundImage = `url("${line.showImage.url}")`;
+    ci.style.display = 'block';
+  }
+
+  if (line.textBox === 'off') document.getElementById('text-box').classList.add('msg-hidden');
+  else if (line.textBox === 'on') document.getElementById('text-box').classList.remove('msg-hidden');
 
   if (line.choices) { showChoices(line.choices); isProcessing = true; return; }
 
   if (line.talk) {
+    document.getElementById('text-box').classList.remove('msg-hidden');
     document.getElementById('speaker').innerText = line.talk.speakerName;
     document.getElementById('text').innerText = line.talk.detail;
-    if (line.figure) await Compositor.update(line.figure.url, line.figure.face, line.figure.comm);
+    if (line.figure) {
+      document.getElementById('cut-image').style.display = 'none';
+      await Compositor.update(line.figure.url, line.figure.face, line.figure.comm);
+    }
     autoSkip = false;
   }
 
@@ -803,6 +855,8 @@ function stop() {
   document.getElementById('options-overlay').classList.remove('active');
   document.getElementById('choice-overlay').classList.remove('active');
   document.getElementById('char-container').style.display = 'none';
+  document.getElementById('cut-image').style.display = 'none';
+  document.getElementById('text-box').classList.remove('msg-hidden');
   document.getElementById('bg-layer').style.backgroundImage = '';
   sc = []; idx = 0; isProcessing = false;
   showChapterScreen();
