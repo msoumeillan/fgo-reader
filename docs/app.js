@@ -376,8 +376,13 @@ async function fetchQuestScript(questId) {
           continue;
         }
 
-        // 6) Dialogue text (ligne normale, pas commande)
-        if (!line.startsWith("[") && currentSpeakerName) {
+        // 6) Dialogue text. Une réplique peut commencer par une balise de mise
+        // en forme ([couleur], [line], [#ruby]...), donc on ne peut pas se fier
+        // à « commence par [ » pour distinguer commande et dialogue. On tente
+        // de parser toute ligne dès qu'un interlocuteur est défini : les lignes
+        // de commande pure se nettoient en chaîne vide et sont ignorées juste
+        // en dessous (garde length > 0).
+        if (currentSpeakerName) {
           const cleanText = cleanDialogueText(line);
           if (cleanText.length > 0) {
             step.talk = {
