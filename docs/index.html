@@ -155,6 +155,12 @@
             padding: calc(38 * var(--u)) calc(82 * var(--u)) calc(16 * var(--u)) calc(50 * var(--u));
             font-family: "Segoe UI", sans-serif;
         }
+        #text-box.has-overflow {
+            cursor: default;
+        }
+        #text-box.has-overflow.at-bottom {
+            cursor: pointer;
+        }
         #text-box::before {
             content: ""; position: absolute; pointer-events: none;
             top: calc(-34 * var(--u)); left: calc(260 * var(--u));
@@ -209,8 +215,32 @@
             font-size: calc(28 * var(--u)); line-height: 1.43;
             color: #eef2ff;
             white-space: pre-line;
+            max-height: calc(84 * var(--u));
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            touch-action: pan-y;
+            -webkit-overflow-scrolling: touch;
+            padding-right: calc(14 * var(--u));
+            scrollbar-width: thin;
+            scrollbar-color: rgba(150,210,255,0.75) rgba(5,20,55,0.35);
             text-shadow: calc(1 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u)) #071329, 0 0 calc(2 * var(--u)) #071329;
         }
+        #text::-webkit-scrollbar { width: calc(7 * var(--u)); }
+        #text::-webkit-scrollbar-track { background: rgba(5,20,55,0.35); border-radius: calc(7 * var(--u)); }
+        #text::-webkit-scrollbar-thumb { background: rgba(150,210,255,0.75); border-radius: calc(7 * var(--u)); }
+        #text-box.has-overflow #text {
+            pointer-events: auto;
+            cursor: grab;
+        }
+        #text-box.has-overflow.at-bottom #text { cursor: pointer; }
+        #text.scroll-dragging { cursor: grabbing !important; }
+        #text-overflow-indicator {
+            display: none; position: absolute; pointer-events: none; z-index: 2;
+            left: calc(50 * var(--u)); right: calc(82 * var(--u)); bottom: calc(16 * var(--u));
+            height: calc(26 * var(--u));
+            background: linear-gradient(transparent, rgba(2,16,48,0.82));
+        }
+        #text-box.has-overflow:not(.at-bottom) #text-overflow-indicator { display: block; }
         /* messageOff : on masque le contenu de la boîte mais on garde la zone cliquable */
         #text-box.msg-hidden { background: transparent; border-color: transparent; box-shadow: none; }
         #text-box.msg-hidden #speaker-tab, #text-box.msg-hidden #text, #text-box.msg-hidden #dialog-controls, #text-box.msg-hidden::before, #text-box.msg-hidden::after { visibility: hidden; }
@@ -406,6 +436,7 @@
         <div id="text-box" onclick="handleClick(event)">
             <div id="speaker-tab"><div id="speaker"></div></div>
             <div id="text"></div>
+            <div id="text-overflow-indicator" aria-hidden="true"></div>
             <div id="dialog-controls" aria-hidden="true">
                 <div class="dialog-log-arrow"></div>
                 <div class="dialog-log">LOG</div>
