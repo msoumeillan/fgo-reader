@@ -1248,11 +1248,11 @@ async function showQuestScreen(war) {
     group.className = 'spot-group';
     const sn = document.createElement('div');
     sn.className = 'spot-name';
-    sn.textContent = 'Prélude';
+    sn.textContent = 'Prelude';
     group.appendChild(sn);
     const item = document.createElement('div');
     item.className = 'quest-item';
-    item.textContent = 'Ouverture du chapitre';
+    item.textContent = 'Opening Script';
     item.onclick = () => { selectedQuestId = detail.script; go(); };
     group.appendChild(item);
     container.appendChild(group);
