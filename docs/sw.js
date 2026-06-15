@@ -1,7 +1,7 @@
 // Service worker minimal : met en cache la coquille de l'appli.
 // Les données et images Atlas Academy passent par le cache HTTP normal.
-const CACHE = "fgo-reader-v1";
-const SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
+const CACHE = "fgo-reader-v2";
+const SHELL = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png", "./audio/choice-select.mp3"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
