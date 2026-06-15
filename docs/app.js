@@ -142,7 +142,7 @@ async function fetchQuestScript(questId) {
       let stepBuffer = [];
       let visibleChars = new Set();
       let lastShownCode = null; // code du perso actuellement affiché par le lecteur
-      let commActive = null;    // appel vidéo en cours : { url, face }
+      let commActive = null;    // appel vidéo en cours : { url, face, position }
       let imageBindings = {};   // code -> URL d'image (imageSet)
       let currentImage = null;  // code de l'image actuellement affichée
       let charPositions = {};   // code -> slot (0/1/2) ou coordonnées x,y
@@ -281,10 +281,11 @@ async function fetchQuestScript(questId) {
         if (commMatch) {
           const charId = commMatch[1];
           const extra = commMatch[2].trim().split(/\s+/).filter(Boolean).map(Number);
+          const position = extra.length ? extra[0] : 1;
           const face = extra.length ? extra[extra.length - 1] : 0;
-          commActive = { url: `${ASSETS}/${REGION}/CharaFigure/${charId}/${charId}_merged.png`, face };
+          commActive = { url: `${ASSETS}/${REGION}/CharaFigure/${charId}/${charId}_merged.png`, face, position };
           step.showChar = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
-          step.charPosition = "1";
+          step.charPosition = String(commActive.position);
           lastShownCode = null;
           stepBuffer.push(step);
           continue;
@@ -295,7 +296,7 @@ async function fetchQuestScript(questId) {
           if (commActive) {
             commActive.face = parseInt(commFaceMatch[1], 10);
             step.showChar = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
-            step.charPosition = "1";
+            step.charPosition = String(commActive.position);
             stepBuffer.push(step);
           }
           continue;
@@ -303,7 +304,7 @@ async function fetchQuestScript(questId) {
         // communicationCharaClear : fin de l'appel
         if (line.includes("communicationCharaClear")) {
           commActive = null;
-          step.hideChar = true;
+          step.hideCharCode = "communication";
           stepBuffer.push(step);
           continue;
         }
@@ -357,7 +358,32 @@ async function fetchQuestScript(questId) {
             url: `${ASSETS}/${REGION}/CharaFigure/${charID}/${charID}_merged.png`,
             currentFace: Number.isFinite(baseFace) ? baseFace : 0,
           };
+          if (visibleChars.has(code)) {
+            step.showChar = {
+              code,
+              url: speakerState[code].url,
+              face: speakerState[code].currentFace,
+            };
+            step.charPosition = charPositions[code] || "1";
+            stepBuffer.push(step);
+          }
           continue;
+        }
+
+        // Focus, ombre et profondeur explicites.
+        const charTalkMatch = line.match(/\[charaTalk\s+([a-zA-Z0-9]+)\]/);
+        if (charTalkMatch && ["on", "off", "depthOn", "depthOff"].includes(charTalkMatch[1])) {
+          step.charTalkToggle = charTalkMatch[1];
+        } else if (charTalkMatch) {
+          step.focusChar = charTalkMatch[1];
+        }
+        const charShadowMatch = line.match(/\[charaShadow\s+([a-zA-Z0-9]+)\s+(true|false)\]/);
+        if (charShadowMatch) {
+          step.charShadow = { code: charShadowMatch[1], shadow: charShadowMatch[2] === "true" };
+        }
+        const charDepthMatch = line.match(/\[charaDepth\s+([a-zA-Z0-9]+)\s+(-?[0-9]*\.?[0-9]+)\]/);
+        if (charDepthMatch) {
+          step.charDepth = { code: charDepthMatch[1], depth: Number(charDepthMatch[2]) };
         }
 
         // 2) charaFace / charaFaceFade : [charaFace A 12], [charaFaceFade A 12 0.2]
@@ -387,17 +413,21 @@ async function fetchQuestScript(questId) {
           const outCode = fadeoutMatch[1];
           const durationMs = secondsToMs(fadeoutMatch[2] || 0);
           visibleChars.delete(outCode);
-          if (visibleChars.size === 0) {
-            step.hideChar = true;
-            step.charCode = outCode;
-            step.charFadeOutMs = durationMs;
-            lastShownCode = null;
-          }
+          step.hideCharCode = outCode;
+          step.charFadeOutMs = durationMs;
+          if (lastShownCode === outCode) lastShownCode = null;
           if (outCode === currentImage) {
             step.hideImage = true;
             step.imageFadeOutMs = durationMs;
             currentImage = null;
           }
+        }
+
+        const charClearMatch = line.match(/\[charaClear\s+([a-zA-Z0-9]+)\]/);
+        if (charClearMatch) {
+          visibleChars.delete(charClearMatch[1]);
+          step.hideCharCode = charClearMatch[1];
+          if (lastShownCode === charClearMatch[1]) lastShownCode = null;
         }
 
         // 2c) charaFadein / charaPut : personnage qui devient visible.
@@ -424,7 +454,9 @@ async function fetchQuestScript(questId) {
         // 2d) charaCrossFade A B : A est remplacé par B à l'écran
         const crossMatch = line.match(/charaCrossFade\s+([a-zA-Z0-9]+)\s+([a-zA-Z0-9]+)/);
         if (crossMatch) {
-          visibleChars.delete(crossMatch[1]);
+          const outCode = crossMatch[1];
+          visibleChars.delete(outCode);
+          step.hideCharCode = outCode;
           const inCode = crossMatch[2];
           visibleChars.add(inCode);
           if (speakerState[inCode]) {
@@ -493,7 +525,7 @@ async function fetchQuestScript(questId) {
           lastShownCode = null;
           commActive = null;
           currentImage = null;
-          step.hideChar = true;
+          step.clearChars = true;
           step.hideImage = true;
         }
 
@@ -563,6 +595,7 @@ async function fetchQuestScript(questId) {
             // (charaFadein). Un perso qui parle hors écran (narration...) ne
             // doit rien afficher.
             if (code && speakerState[code] && visibleChars.has(code)) {
+              step.focusChar = code;
               step.figure = {
                 code,
                 url: speakerState[code].url,
@@ -574,12 +607,11 @@ async function fetchQuestScript(questId) {
             // Sinon, si un appel vidéo est en cours, on affiche le perso appelé
             // (effet visio) — typiquement Romani en communication
             else if (commActive) {
+              step.focusChar = "communication";
               step.figure = { code: "communication", url: commActive.url, face: commActive.face, comm: true };
-              step.charPosition = "1";
-            } else if (lastShownCode && !visibleChars.has(lastShownCode)) {
-              // Le perso encore affiché par le lecteur a quitté la scène
-              step.hideChar = true;
-              lastShownCode = null;
+              step.charPosition = String(commActive.position);
+            } else {
+              step.focusChar = null;
             }
           }
         }
@@ -620,21 +652,45 @@ async function fetchQuestScript(questId) {
 }
 
 // ------------------------------------------------------------
-// Compositor : placement des sprites comme dans le jeu
+// Scène multi-personnages : placement des sprites comme dans le jeu
 // (scène de 1024x576, offsets officiels, planche de visages)
 // ------------------------------------------------------------
-let lastFigure = null;
+const Characters = {
+  figures: new Map(),
+  positions: new Map(),
+  shadows: new Map(),
+  depths: new Map(),
+  focusCode: null,
+  dimUnfocused: true,
+  raiseSpeaker: true,
 
-const Compositor = {
-  async update(url, faceIndex, isComm = false) {
-    const container = document.getElementById('char-container');
-    const bodyDiv = document.getElementById('char-body');
-    const faceDiv = document.getElementById('char-face');
-    const scan = document.getElementById('char-scanlines');
+  get(code, create = true) {
+    let container = document.querySelector(`.char-container[data-code="${code}"]`);
+    if (container || !create) return container;
+    container = document.createElement('div');
+    container.className = 'char-container';
+    container.dataset.code = code;
+    container.innerHTML = `
+      <div class="char-motion">
+        <div class="char-body"></div>
+        <div class="char-face"></div>
+        <div class="char-scanlines"></div>
+      </div>`;
+    document.getElementById('characters-layer').appendChild(container);
+    this.refreshAppearance();
+    return container;
+  },
+
+  async update(code, url, faceIndex, isComm = false) {
+    const container = this.get(code);
+    const bodyDiv = container.querySelector('.char-body');
+    const faceDiv = container.querySelector('.char-face');
+    const scan = container.querySelector('.char-scanlines');
     const match = url.match(/\/([0-9]+)_merged\.png/);
     const charID = match ? match[1] : null;
     const info = charID ? await fetchFigureInfo(charID) : null;
-    lastFigure = { url, faceIndex, isComm };
+    if (!container.isConnected) return;
+    this.figures.set(code, { url, faceIndex, isComm });
 
     // En paysage : calé sur la hauteur (comme le jeu). En portrait : on
     // réduit pour que le buste (~420px au centre du canvas) tienne en largeur
@@ -681,6 +737,7 @@ const Compositor = {
     if (!info || !Number.isFinite(face) || face <= 0) {
       faceDiv.style.display = 'none';
       container.style.display = 'block';
+      this.refreshAppearance();
       return;
     }
     const imageIndex = face - 1;
@@ -703,12 +760,108 @@ const Compositor = {
     faceDiv.style.backgroundPosition = `${-(col * info.w * S)}px ${-(sheetY * S)}px`;
     faceDiv.style.display = 'block';
     container.style.display = 'block';
-  }
+    this.refreshAppearance();
+  },
+
+  move(code, position, durationMs = 0) {
+    this.positions.set(code, position);
+    const container = this.get(code, false);
+    if (!container) return;
+    const target = charPosition(position);
+    container.style.transitionDuration = `${durationMs}ms, ${durationMs}ms, 180ms`;
+    container.style.setProperty('--char-x', `${target.x}px`);
+    container.style.setProperty('--char-y', `${target.y}px`);
+    markEffect('charamove', durationMs);
+  },
+
+  shake(code, effect) {
+    const container = this.get(code, false);
+    if (!container) return;
+    const motion = container.querySelector('.char-motion');
+    motion.getAnimations().forEach(animation => animation.cancel());
+    shakeElement(motion, effect, null);
+    markEffect('charashake', effect.durationMs, effect.durationMs === 0);
+  },
+
+  hide(code, durationMs = 0) {
+    const container = this.get(code, false);
+    if (!container) return;
+    if (durationMs > 0) {
+      animateOpacity(container, Number(getComputedStyle(container).opacity) || 1, 0, durationMs);
+      markEffect('charafade', durationMs);
+      setTimeout(() => {
+        if (container.style.opacity === '0') container.remove();
+      }, durationMs + 25);
+    } else {
+      container.remove();
+    }
+    this.figures.delete(code);
+    this.positions.delete(code);
+    if (this.focusCode === code) this.focusCode = null;
+    this.refreshAppearance();
+  },
+
+  clear() {
+    document.getElementById('characters-layer').replaceChildren();
+    this.figures.clear();
+    this.positions.clear();
+    this.focusCode = null;
+  },
+
+  reset() {
+    this.clear();
+    this.shadows.clear();
+    this.depths.clear();
+    this.dimUnfocused = true;
+    this.raiseSpeaker = true;
+  },
+
+  focus(code) {
+    this.focusCode = code;
+    this.refreshAppearance();
+  },
+
+  setShadow(code, shadow) {
+    this.shadows.set(code, shadow);
+    this.refreshAppearance();
+  },
+
+  setDepth(code, depth) {
+    this.depths.set(code, depth);
+    this.refreshAppearance();
+  },
+
+  setTalkToggle(toggle) {
+    if (toggle === 'on') this.dimUnfocused = true;
+    else if (toggle === 'off') this.dimUnfocused = false;
+    else if (toggle === 'depthOn') this.raiseSpeaker = true;
+    else if (toggle === 'depthOff') this.raiseSpeaker = false;
+    this.refreshAppearance();
+  },
+
+  refreshAppearance() {
+    const containers = document.querySelectorAll('.char-container');
+    containers.forEach(container => {
+      const code = container.dataset.code;
+      const forcedShadow = this.shadows.get(code) === true;
+      const unfocused = this.dimUnfocused && this.focusCode && code !== this.focusCode;
+      container.classList.toggle('dimmed', forcedShadow || unfocused);
+      const depth = this.depths.get(code) || 0;
+      const speakerDepth = this.raiseSpeaker && code === this.focusCode ? 100 : 10;
+      container.style.zIndex = String(speakerDepth + depth);
+    });
+  },
+
+  async resize() {
+    const figures = [...this.figures.entries()];
+    for (const [code, figure] of figures) {
+      await this.update(code, figure.url, figure.faceIndex, figure.isComm);
+      if (this.positions.has(code)) this.move(code, this.positions.get(code), 0);
+    }
+  },
 };
 window.addEventListener('resize', () => {
-  if (lastFigure && document.getElementById('char-container').style.display === 'block') {
-    Compositor.update(lastFigure.url, lastFigure.faceIndex, lastFigure.isComm);
-  }
+  Characters.resize();
 });
 
 // ------------------------------------------------------------
@@ -723,10 +876,7 @@ seAudio.volume = 0.8;
 
 const effectUntil = {};
 let screenShakeAnimation = null;
-let charShakeAnimation = null;
 let flashAnimation = null;
-let currentDisplayedCode = null;
-let charAnimationToken = 0;
 let imageAnimationToken = 0;
 let wipeAnimationToken = 0;
 const opacityAnimationTokens = new WeakMap();
@@ -919,12 +1069,6 @@ function stopScreenShake() {
   stopEffect('shake');
 }
 
-function playCharShake(effect) {
-  if (effect.code !== currentDisplayedCode) return;
-  charShakeAnimation = shakeElement(document.getElementById('char-motion'), effect, charShakeAnimation);
-  markEffect('charashake', effect.durationMs, effect.durationMs === 0);
-}
-
 function moveCamera(camera) {
   const layer = document.getElementById('camera-layer');
   const scale = referenceScale();
@@ -942,19 +1086,8 @@ function charPosition(position) {
   return { x: ((Number.isFinite(slot) ? slot : 1) - 1) * 220 * referenceScale(), y: 0 };
 }
 
-function moveCharacter(position, durationMs) {
-  const container = document.getElementById('char-container');
-  const target = charPosition(position);
-  container.style.transition = `transform ${durationMs}ms ease-in-out, opacity ${durationMs}ms linear`;
-  container.style.setProperty('--char-x', `${target.x}px`);
-  container.style.setProperty('--char-y', `${target.y}px`);
-  markEffect('charamove', durationMs);
-}
-
 function resetVisualEffects() {
   stopScreenShake();
-  cancelAnimation(charShakeAnimation);
-  charShakeAnimation = null;
   cancelAnimation(flashAnimation);
   flashAnimation = null;
   Object.keys(effectUntil).forEach(key => { effectUntil[key] = 0; });
@@ -962,13 +1095,8 @@ function resetVisualEffects() {
   const camera = document.getElementById('camera-layer');
   camera.style.transition = 'none';
   camera.style.transform = '';
-  const char = document.getElementById('char-container');
-  char.style.transition = 'none';
-  char.style.opacity = '1';
-  char.style.setProperty('--char-x', '0px');
-  char.style.setProperty('--char-y', '0px');
-  currentDisplayedCode = null;
-  charAnimationToken++;
+  Characters.reset();
+  document.getElementById('characters-layer').style.display = 'block';
   imageAnimationToken++;
   wipeAnimationToken++;
 
@@ -1157,7 +1285,6 @@ async function go() {
   document.getElementById('quest-log').textContent = '';
   document.getElementById('quest-screen').style.display = 'none';
   document.getElementById('reader-container').style.display = 'block';
-  document.getElementById('char-container').style.display = 'none';
   run();
 }
 
@@ -1225,25 +1352,12 @@ async function run() {
   if (line.screenShakeStop) stopScreenShake();
   if (line.camera) moveCamera(line.camera);
 
-  if (line.hideChar) {
-    const char = document.getElementById('char-container');
-    const token = ++charAnimationToken;
-    if (line.charFadeOutMs > 0) {
-      const hiddenCode = currentDisplayedCode;
-      animateOpacity(char, Number(getComputedStyle(char).opacity) || 1, 0, line.charFadeOutMs);
-      markEffect('charafade', line.charFadeOutMs);
-      setTimeout(() => {
-        if (charAnimationToken === token && currentDisplayedCode === hiddenCode) {
-          char.style.display = 'none';
-          char.style.opacity = '1';
-          currentDisplayedCode = null;
-        }
-      }, line.charFadeOutMs);
-    } else {
-      char.style.display = 'none';
-      currentDisplayedCode = null;
-    }
-  }
+  if (line.clearChars) Characters.clear();
+  if (line.charShadow) Characters.setShadow(line.charShadow.code, line.charShadow.shadow);
+  if (line.charDepth) Characters.setDepth(line.charDepth.code, line.charDepth.depth);
+  if (line.charTalkToggle) Characters.setTalkToggle(line.charTalkToggle);
+  if (Object.prototype.hasOwnProperty.call(line, 'focusChar')) Characters.focus(line.focusChar);
+  if (line.hideCharCode) Characters.hide(line.hideCharCode, line.charFadeOutMs || 0);
 
   if (line.hideImage) {
     const image = document.getElementById('cut-image');
@@ -1260,16 +1374,17 @@ async function run() {
     } else {
       image.style.display = 'none';
     }
+    document.getElementById('characters-layer').style.display = 'block';
   }
 
   if (line.showChar) {
-    charAnimationToken++;
     document.getElementById('cut-image').style.display = 'none';
-    const char = document.getElementById('char-container');
-    if (line.charPosition !== undefined) moveCharacter(line.charPosition, 0);
+    document.getElementById('characters-layer').style.display = 'block';
+    const code = line.showChar.code;
+    const char = Characters.get(code);
+    if (line.charPosition !== undefined) Characters.move(code, line.charPosition, 0);
     if (line.charFadeInMs > 0 || line.charCrossFadeMs > 0) char.style.opacity = '0';
-    await Compositor.update(line.showChar.url, line.showChar.face, line.showChar.comm);
-    currentDisplayedCode = line.showChar.code || currentDisplayedCode;
+    await Characters.update(code, line.showChar.url, line.showChar.face, line.showChar.comm);
     const fadeMs = line.charFadeInMs || line.charCrossFadeMs || 0;
     if (fadeMs > 0) {
       animateOpacity(char, 0, 1, fadeMs);
@@ -1282,8 +1397,7 @@ async function run() {
   // Image (cut-in / CG) : on cache le perso pendant qu'on l'affiche (v1 : une à la fois)
   if (line.showImage) {
     imageAnimationToken++;
-    document.getElementById('char-container').style.display = 'none';
-    currentDisplayedCode = null;
+    document.getElementById('characters-layer').style.display = 'none';
     const ci = document.getElementById('cut-image');
     ci.style.backgroundImage = `url("${line.showImage.url}")`;
     ci.style.display = 'block';
@@ -1295,10 +1409,8 @@ async function run() {
     }
   }
 
-  if (line.charMove && line.charMove.code === currentDisplayedCode) {
-    moveCharacter(line.charMove.position, line.charMove.durationMs);
-  }
-  if (line.charShake) playCharShake(line.charShake);
+  if (line.charMove) Characters.move(line.charMove.code, line.charMove.position, line.charMove.durationMs);
+  if (line.charShake) Characters.shake(line.charShake.code, line.charShake);
 
   if (line.textBox === 'off') document.getElementById('text-box').classList.add('msg-hidden');
   else if (line.textBox === 'on') document.getElementById('text-box').classList.remove('msg-hidden');
@@ -1311,9 +1423,9 @@ async function run() {
     document.getElementById('text').innerText = line.talk.detail;
     if (line.figure) {
       document.getElementById('cut-image').style.display = 'none';
-      if (line.charPosition !== undefined) moveCharacter(line.charPosition, 0);
-      await Compositor.update(line.figure.url, line.figure.face, line.figure.comm);
-      currentDisplayedCode = line.figure.code || currentDisplayedCode;
+      document.getElementById('characters-layer').style.display = 'block';
+      if (line.charPosition !== undefined) Characters.move(line.figure.code, line.charPosition, 0);
+      await Characters.update(line.figure.code, line.figure.url, line.figure.face, line.figure.comm);
     }
     autoSkip = false;
   }
@@ -1358,7 +1470,6 @@ function stop() {
   document.getElementById('end-overlay').classList.remove('active');
   document.getElementById('options-overlay').classList.remove('active');
   document.getElementById('choice-overlay').classList.remove('active');
-  document.getElementById('char-container').style.display = 'none';
   document.getElementById('cut-image').style.display = 'none';
   document.getElementById('text-box').classList.remove('msg-hidden');
   document.getElementById('bg-layer').style.backgroundImage = '';

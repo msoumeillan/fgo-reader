@@ -110,16 +110,19 @@
            largeur de l'écran, ancrées en haut, pour les composer comme le jeu. */
         #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center top; background-size: 100% auto; display: none; pointer-events: none; }
 
-        #char-container {
+        #characters-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
+        .char-container {
             position: absolute; bottom: 0; left: 50%; transform: translate(calc(-50% + var(--char-x, 0px)), var(--char-y, 0px));
-            overflow: hidden; pointer-events: none; z-index: 5; display: none;
+            overflow: hidden; pointer-events: none; display: none;
+            transition: transform 0ms ease-in-out, opacity 0ms linear, filter 0.18s ease-out;
         }
-        #char-motion { position: absolute; inset: 0; }
-        #char-body { position: absolute; background-repeat: no-repeat; }
-        #char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
+        .char-container.dimmed { filter: brightness(0.55); }
+        .char-motion { position: absolute; inset: 0; }
+        .char-body { position: absolute; background-repeat: no-repeat; }
+        .char-face { position: absolute; background-repeat: no-repeat; z-index: 6; display: none; }
         /* Effet "appel vidéo" (communicationChara) : transparence + scanlines */
-        #char-container.comm #char-body, #char-container.comm #char-face { opacity: 0.5; }
-        #char-scanlines {
+        .char-container.comm .char-body, .char-container.comm .char-face { opacity: 0.5; }
+        .char-scanlines {
             position: absolute; display: none; pointer-events: none; z-index: 7;
             background: repeating-linear-gradient(0deg, rgba(170,210,255,0.20) 0px, rgba(170,210,255,0.20) 1px, transparent 2px, transparent 4px);
             mix-blend-mode: screen; animation: comm-scan 5s linear infinite;
@@ -246,13 +249,7 @@
             <div id="camera-layer">
                 <div id="bg-layer"></div>
                 <div id="cut-image"></div>
-                <div id="char-container">
-                    <div id="char-motion">
-                        <div id="char-body"></div>
-                        <div id="char-face"></div>
-                        <div id="char-scanlines"></div>
-                    </div>
-                </div>
+                <div id="characters-layer"></div>
             </div>
         </div>
         <div id="wipe-layer"></div>
