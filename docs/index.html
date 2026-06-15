@@ -137,32 +137,123 @@
         #flash-layer { z-index: 9; opacity: 0; }
 
         #text-box {
-            position: absolute; bottom: 0; left: 0; right: 0; min-height: 19%;
+            --u: var(--fgo-ui-unit, 1px);
+            position: absolute;
+            width: calc(980 * var(--u)); height: calc(138 * var(--u));
+            bottom: calc(12 * var(--u)); left: 50%; transform: translateX(-50%);
             z-index: 10; cursor: pointer;
-            background: linear-gradient(to right, rgba(5,15,50,0.96) 0%, rgba(8,22,70,0.93) 40%, rgba(8,22,70,0.93) 60%, rgba(5,15,50,0.96) 100%);
-            border-top: 2px solid rgba(80,140,255,0.6);
-            box-shadow: 0 -4px 20px rgba(30,80,200,0.25), inset 0 1px 0 rgba(120,180,255,0.15);
-            padding: 12px 44px calc(12px + env(safe-area-inset-bottom)) 24px;
-            display: flex; flex-direction: column; justify-content: center; gap: 6px;
+            border: calc(1 * var(--u)) solid rgba(80,155,220,0.65);
+            border-radius: calc(8 * var(--u));
+            background:
+                repeating-linear-gradient(0deg, rgba(145,210,255,0.035) 0, rgba(145,210,255,0.035) calc(1 * var(--u)), transparent calc(1 * var(--u)), transparent calc(3 * var(--u))),
+                radial-gradient(ellipse at 30% 0%, rgba(20,105,125,0.34), transparent 48%),
+                linear-gradient(100deg, rgba(4,38,69,0.80), rgba(1,22,63,0.87) 52%, rgba(3,35,75,0.82));
+            box-shadow:
+                inset 0 calc(2 * var(--u)) 0 rgba(89,181,235,0.45),
+                inset 0 0 calc(20 * var(--u)) rgba(0,15,50,0.7),
+                0 calc(2 * var(--u)) calc(8 * var(--u)) rgba(0,0,0,0.35);
+            padding: calc(38 * var(--u)) calc(82 * var(--u)) calc(16 * var(--u)) calc(50 * var(--u));
+            font-family: "Segoe UI", sans-serif;
+        }
+        #text-box::before {
+            content: ""; position: absolute; pointer-events: none;
+            top: calc(-34 * var(--u)); left: calc(260 * var(--u));
+            width: calc(180 * var(--u)); height: calc(48 * var(--u));
+            background: linear-gradient(90deg, transparent, rgba(17,77,151,0.2) 18%, transparent);
+        }
+        #text-box::after {
+            content: ""; position: absolute; pointer-events: none;
+            right: calc(55 * var(--u)); bottom: calc(2 * var(--u));
+            width: calc(170 * var(--u)); height: calc(84 * var(--u)); opacity: 0.16;
+            background:
+                linear-gradient(45deg, transparent 42%, rgba(55,125,230,0.8) 43% 57%, transparent 58%) 0 0 / calc(42 * var(--u)) calc(42 * var(--u)),
+                linear-gradient(-45deg, transparent 42%, rgba(55,125,230,0.8) 43% 57%, transparent 58%) 0 0 / calc(42 * var(--u)) calc(42 * var(--u));
+            transform: skewX(-18deg);
         }
         #speaker-tab {
-            position: absolute; top: -32px; left: 18px;
-            background: linear-gradient(135deg, rgba(20,60,160,0.95), rgba(10,35,100,0.95));
-            border: 1px solid rgba(80,140,255,0.5); border-bottom: none;
-            padding: 5px 22px 7px;
-            clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 100%, 0 100%);
-            min-width: 100px;
+            position: absolute; top: calc(-34 * var(--u)); left: calc(-18 * var(--u));
+            width: calc(330 * var(--u)); height: calc(48 * var(--u));
+            padding: calc(7 * var(--u)) calc(28 * var(--u)) calc(7 * var(--u)) calc(34 * var(--u));
+            display: flex; align-items: center;
+            background: rgba(142,220,225,0.82);
+            clip-path: polygon(
+                calc(18 * var(--u)) 0,
+                100% 0,
+                calc(100% - 30 * var(--u)) 100%,
+                calc(18 * var(--u)) 100%,
+                0 50%
+            );
+            filter: drop-shadow(0 calc(2 * var(--u)) calc(2 * var(--u)) rgba(0,0,0,0.45));
         }
-        #speaker { color: #c8ddff; font-weight: bold; font-size: clamp(0.9rem, 2.6vmin, 1.15rem); letter-spacing: 0.04em; text-shadow: 0 0 8px rgba(100,160,255,0.6); }
-        #text { font-size: clamp(0.95rem, 3.2vmin, 1.35rem); line-height: 1.5; color: #eef2ff; text-shadow: 1px 1px 3px rgba(0,0,10,0.9); }
+        #speaker-tab::before {
+            content: ""; position: absolute; inset: calc(2 * var(--u));
+            background:
+                repeating-linear-gradient(0deg, rgba(150,230,255,0.045) 0, rgba(150,230,255,0.045) calc(1 * var(--u)), transparent calc(1 * var(--u)), transparent calc(3 * var(--u))),
+                linear-gradient(100deg, rgba(22,101,151,0.93), rgba(17,77,151,0.82) 58%, rgba(15,56,132,0.24));
+            clip-path: polygon(
+                calc(16 * var(--u)) 0,
+                100% 0,
+                calc(100% - 28 * var(--u)) 100%,
+                calc(16 * var(--u)) 100%,
+                0 50%
+            );
+        }
+        #speaker {
+            position: relative; z-index: 1;
+            color: #c8ddff; font-weight: bold;
+            font-size: calc(29 * var(--u)); line-height: 1;
+            text-shadow: calc(1 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u)) #071329, 0 0 calc(2 * var(--u)) #071329;
+        }
+        #text {
+            position: relative; z-index: 1;
+            font-size: calc(28 * var(--u)); line-height: 1.43;
+            color: #eef2ff;
+            white-space: pre-line;
+            text-shadow: calc(1 * var(--u)) calc(2 * var(--u)) calc(2 * var(--u)) #071329, 0 0 calc(2 * var(--u)) #071329;
+        }
         /* messageOff : on masque le contenu de la boîte mais on garde la zone cliquable */
-        #text-box.msg-hidden { background: transparent; border-top: none; box-shadow: none; }
-        #text-box.msg-hidden #speaker-tab, #text-box.msg-hidden #text { visibility: hidden; }
-        #next-icon {
-            position: absolute; bottom: calc(8px + env(safe-area-inset-bottom)); right: 16px; width: 22px; height: 22px;
-            border: 2px solid #7ab0ff; border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-size: 0.65rem; color: #7ab0ff; animation: pulse-next 1.4s ease-in-out infinite;
+        #text-box.msg-hidden { background: transparent; border-color: transparent; box-shadow: none; }
+        #text-box.msg-hidden #speaker-tab, #text-box.msg-hidden #text, #text-box.msg-hidden #dialog-controls, #text-box.msg-hidden::before, #text-box.msg-hidden::after { visibility: hidden; }
+        #dialog-controls {
+            position: absolute; z-index: 2;
+            top: calc(5 * var(--u)); right: calc(9 * var(--u));
+            width: calc(38 * var(--u)); height: calc(125 * var(--u));
+            color: rgba(239,245,242,0.92);
+            font-family: "Segoe UI", sans-serif;
+            text-align: center;
+            text-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) #061429;
         }
+        .dialog-log-arrow {
+            width: 0; height: 0; margin: 0 auto calc(1 * var(--u));
+            border-left: calc(13 * var(--u)) solid transparent;
+            border-right: calc(13 * var(--u)) solid transparent;
+            border-bottom: calc(10 * var(--u)) solid rgba(239,245,242,0.9);
+        }
+        .dialog-log, .dialog-auto { font-size: calc(11 * var(--u)); line-height: 1; }
+        .dialog-auto-button {
+            width: calc(27 * var(--u)); height: calc(27 * var(--u)); margin: calc(7 * var(--u)) auto calc(2 * var(--u));
+            border: calc(2 * var(--u)) solid rgba(239,245,242,0.82);
+            border-radius: calc(3 * var(--u)); display: grid; place-items: center;
+        }
+        .dialog-auto-button::after {
+            content: ""; margin-left: calc(2 * var(--u));
+            border-top: calc(7 * var(--u)) solid transparent;
+            border-bottom: calc(7 * var(--u)) solid transparent;
+            border-left: calc(10 * var(--u)) solid rgba(239,245,242,0.88);
+        }
+        #next-icon {
+            position: absolute; bottom: calc(3 * var(--u)); right: calc(8 * var(--u));
+            width: calc(34 * var(--u)); height: calc(34 * var(--u));
+            font-size: 0; animation: pulse-next 1.4s ease-in-out infinite;
+        }
+        #next-icon::before, #next-icon::after {
+            content: ""; position: absolute; left: 50%;
+            width: calc(14 * var(--u)); height: calc(14 * var(--u));
+            border: calc(2 * var(--u)) solid #fff; transform: translateX(-50%) rotate(45deg);
+            box-shadow: 0 0 calc(3 * var(--u)) #2878ff, inset 0 0 calc(2 * var(--u)) #2878ff;
+        }
+        #next-icon::before { top: calc(1 * var(--u)); }
+        #next-icon::after { top: calc(13 * var(--u)); }
         @keyframes pulse-next { 0%,100% { opacity:0.3; } 50% { opacity:1; } }
 
         #options-btn { position: absolute; top: calc(8px + env(safe-area-inset-top)); right: 10px; z-index: 20; background: rgba(40,40,40,0.75); color: white; border: 1px solid #555; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 1.15rem; display: flex; align-items: center; justify-content: center; }
@@ -192,17 +283,74 @@
         #btn-back-menu { background: #333; color: #ccc; }
         #btn-back-menu:hover { background: #444; }
 
-        #choice-overlay { display: none; position: absolute; inset: 0; z-index: 50; background: rgba(0,0,0,0.6); justify-content: center; align-items: center; padding: 16px; }
+        #choice-overlay {
+            --u: var(--fgo-ui-unit, 1px);
+            display: none; position: absolute; inset: 0; z-index: 50;
+            flex-direction: column; justify-content: flex-start; align-items: center;
+            padding-top: calc(132 * var(--u));
+        }
         #choice-overlay.active { display: flex; }
-        #choice-box { background: #1a1a2e; border: 1px solid #3498db; border-radius: 10px; padding: 24px 28px; display: flex; flex-direction: column; gap: 12px; min-width: min(400px, 90vw); max-width: 700px; }
-        #choice-box p { margin: 0 0 8px; color: #aaa; font-size: 0.95rem; text-align: center; }
-        .choice-btn { background: #223; border: 1px solid #3498db; color: white; padding: 13px 18px; border-radius: 6px; font-size: clamp(0.95rem, 2.8vmin, 1.1rem); cursor: pointer; text-align: left; transition: background 0.15s; }
-        .choice-btn:hover { background: #3498db; }
+        #choice-box {
+            width: calc(780 * var(--u));
+            display: flex; flex-direction: column; gap: calc(26 * var(--u));
+        }
+        #choice-box p { display: none; }
+        .choice-btn {
+            position: relative; isolation: isolate;
+            width: 100%; min-height: calc(72 * var(--u));
+            border: 0; padding: calc(12 * var(--u)) calc(38 * var(--u));
+            background: linear-gradient(100deg, #a8e6f0, #5395e6 55%, #315eb4);
+            clip-path: polygon(
+                calc(18 * var(--u)) 0,
+                100% 0,
+                100% calc(100% - 18 * var(--u)),
+                calc(100% - 18 * var(--u)) 100%,
+                0 100%,
+                0 calc(18 * var(--u))
+            );
+            color: #f4f4f4; cursor: pointer;
+            font-family: "Segoe UI", sans-serif;
+            font-size: calc(29 * var(--u)); line-height: 1.22;
+            text-align: center;
+            text-shadow: 0 calc(2 * var(--u)) calc(2 * var(--u)) #000;
+            filter: drop-shadow(0 calc(3 * var(--u)) calc(2 * var(--u)) rgba(0,0,0,0.5));
+            transition: filter 0.12s ease, transform 0.12s ease;
+        }
+        .choice-btn::before {
+            content: ""; position: absolute; z-index: -1;
+            inset: calc(3 * var(--u));
+            background: linear-gradient(90deg, rgba(11,14,19,0.98), #000 38%);
+            clip-path: polygon(
+                calc(16 * var(--u)) 0,
+                100% 0,
+                100% calc(100% - 16 * var(--u)),
+                calc(100% - 16 * var(--u)) 100%,
+                0 100%,
+                0 calc(16 * var(--u))
+            );
+        }
+        .choice-btn::after {
+            content: ""; position: absolute; z-index: -1; pointer-events: none;
+            top: calc(3 * var(--u)); bottom: calc(3 * var(--u)); left: calc(3 * var(--u));
+            width: calc(235 * var(--u)); opacity: 0.15;
+            background:
+                linear-gradient(135deg, transparent 44%, #8290ad 45% 55%, transparent 56%) 0 0 / calc(34 * var(--u)) calc(34 * var(--u)),
+                linear-gradient(45deg, transparent 44%, #8290ad 45% 55%, transparent 56%) 0 0 / calc(34 * var(--u)) calc(34 * var(--u));
+            clip-path: polygon(calc(16 * var(--u)) 0, 100% 0, 100% 100%, 0 100%, 0 calc(16 * var(--u)));
+            -webkit-mask-image: linear-gradient(90deg, #000 58%, transparent);
+            mask-image: linear-gradient(90deg, #000 58%, transparent);
+        }
+        .choice-btn:hover, .choice-btn:focus-visible {
+            filter: brightness(1.18) drop-shadow(0 calc(3 * var(--u)) calc(3 * var(--u)) rgba(0,0,0,0.6));
+            outline: none;
+        }
+        .choice-btn:active { transform: scale(0.99); }
     </style>
 </head>
 <body>
     <audio id="bgm-player" loop></audio>
     <audio id="se-player"></audio>
+    <audio id="choice-se-player" preload="auto" src="./audio/choice-select.mp3"></audio>
 
     <!-- CHAPTER SELECT -->
     <div id="chapter-screen">
@@ -258,7 +406,13 @@
         <div id="text-box" onclick="handleClick(event)">
             <div id="speaker-tab"><div id="speaker"></div></div>
             <div id="text"></div>
-            <div id="next-icon">▶</div>
+            <div id="dialog-controls" aria-hidden="true">
+                <div class="dialog-log-arrow"></div>
+                <div class="dialog-log">LOG</div>
+                <div class="dialog-auto-button"></div>
+                <div class="dialog-auto">AUTO</div>
+            </div>
+            <div id="next-icon"></div>
         </div>
         <div id="choice-overlay">
             <div id="choice-box"><p>Choisissez une réponse</p></div>

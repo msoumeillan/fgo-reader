@@ -98,7 +98,7 @@ function cleanDialogueText(text) {
     })
     .replace(/\[#([^:\]]*):[^\]]*\]/g, "$1")
     .replace(/\[servantName\s+[^:\]]*:([^:\]]*):[^\]]*\]/g, "$1")
-    .replace(/\[(?:r|sr|csr)\]/g, " ")
+    .replace(/\[(?:r|sr|csr)\]/g, "\n")
     .replace(/\[.*?\]/g, "")
     .replace(/ {2,}/g, " ")
     .trim();
@@ -860,7 +860,14 @@ const Characters = {
     }
   },
 };
+
+function updateReaderScale() {
+  const scale = Math.min(window.innerWidth / 1024, window.innerHeight / 576);
+  document.documentElement.style.setProperty('--fgo-ui-unit', `${scale}px`);
+}
+
 window.addEventListener('resize', () => {
+  updateReaderScale();
   Characters.resize();
 });
 
@@ -871,8 +878,10 @@ let sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuest
 let currentWarDetail = null;
 const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
+const choiceSeAudio = document.getElementById('choice-se-player');
 audio.volume = 0.5;
 seAudio.volume = 0.8;
+choiceSeAudio.volume = 0.8;
 
 const effectUntil = {};
 let screenShakeAnimation = null;
@@ -1109,6 +1118,7 @@ function resetVisualEffects() {
 }
 
 async function init() {
+  updateReaderScale();
   try {
     wars = await fetchWars();
     buildChapterGrid();
@@ -1309,6 +1319,8 @@ function showChoices(choices) {
     const steps = (typeof choice === 'object' && choice.steps) ? choice.steps : [];
     btn.textContent = text;
     btn.onclick = () => {
+      choiceSeAudio.currentTime = 0;
+      choiceSeAudio.play().catch(() => {});
       overlay.classList.remove('active');
       if (steps.length > 0) sc.splice(idx + 1, 0, ...steps);
       idx++; run();
