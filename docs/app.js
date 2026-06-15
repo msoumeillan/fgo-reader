@@ -24,7 +24,9 @@ async function fetchWarDetail(warId) {
   if (warDetailCache[warId]) return warDetailCache[warId];
   const r = await fetch(`${API}/nice/${REGION}/war/${warId}`);
   const w = await r.json();
-  const detail = { id: w.id, longName: w.longName, banner: w.banner, spots: w.spots || [] };
+  // w.script = script d'ouverture du chapitre ; "NONE.txt" = pas de prélude
+  const opening = (w.script && !/\/NONE\.txt$/i.test(w.script)) ? w.script : null;
+  const detail = { id: w.id, longName: w.longName, banner: w.banner, script: opening, spots: w.spots || [] };
   warDetailCache[warId] = detail;
   return detail;
 }
@@ -119,7 +121,13 @@ async function fetchQuestScript(questId) {
       if (p.scripts) p.scripts.forEach((s) => scriptUrls.push(s.script));
     });
   }
-  if (scriptUrls.length === 0) return [];
+  return parseScriptUrls(scriptUrls);
+}
+
+// Parse une liste d'URLs de scripts en étapes du lecteur. Réutilisé pour les
+// quêtes (plusieurs scripts) et pour le script d'ouverture d'un chapitre.
+async function parseScriptUrls(scriptUrls) {
+  if (!scriptUrls || scriptUrls.length === 0) return [];
 
   let combinedScript = [];
 
@@ -1234,13 +1242,24 @@ async function showQuestScreen(war) {
   // Sections triées dans l'ordre de l'histoire, numérotées « Section N ».
   // On ne garde que les quêtes d'histoire (type 'main') ; si le chapitre n'en
   // a aucune (war atypique), on retombe sur toutes les quêtes pour ne rien casser.
+  // Script d'ouverture du chapitre (prélude), s'il existe
+  if (detail.script) {
+    const group = document.createElement('div');
+    group.className = 'spot-group';
+    const sn = document.createElement('div');
+    sn.className = 'spot-name';
+    sn.textContent = 'Prélude';
+    group.appendChild(sn);
+    const item = document.createElement('div');
+    item.className = 'quest-item';
+    item.textContent = 'Ouverture du chapitre';
+    item.onclick = () => { selectedQuestId = detail.script; go(); };
+    group.appendChild(item);
+    container.appendChild(group);
+  }
+
   let sections = buildSections(detail, true);
   if (sections.length === 0) sections = buildSections(detail, false);
-
-  if (sections.length === 0) {
-    container.innerHTML = '<div class="quest-loading">Aucune quête.</div>';
-    return;
-  }
 
   sections.forEach((section, i) => {
     const group = document.createElement('div');
@@ -1252,6 +1271,10 @@ async function showQuestScreen(war) {
     section.quests.forEach(quest => group.appendChild(makeItem(quest)));
     container.appendChild(group);
   });
+
+  if (!detail.script && sections.length === 0) {
+    container.innerHTML = '<div class="quest-loading">Aucune quête.</div>';
+  }
 }
 
 function allQuests() {
@@ -1262,6 +1285,10 @@ function allQuests() {
 }
 function nextQuest() {
   const all = allQuests();
+  // Après le prélude (script d'ouverture), enchaîner sur la 1re quête
+  if (currentWarDetail && currentQuestId === currentWarDetail.script) {
+    return all[0] || null;
+  }
   const i = all.findIndex(q => String(q.id) === String(currentQuestId));
   return i >= 0 && i + 1 < all.length ? all[i + 1] : null;
 }
@@ -1280,7 +1307,9 @@ async function loadQuest(id) {
   audio.load();
   let script;
   try {
-    script = await fetchQuestScript(id);
+    script = (typeof id === 'string' && id.startsWith('http'))
+      ? await parseScriptUrls([id])      // script d'ouverture (URL directe)
+      : await fetchQuestScript(id);       // quête normale
   } catch (e) {
     return false;
   }
