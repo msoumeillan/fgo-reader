@@ -1178,6 +1178,21 @@ function showChapterScreen() {
   document.getElementById('chapter-screen').style.display = 'flex';
 }
 
+// Construit les sections d'un chapitre : un groupe par spot contenant des
+// quêtes (storyOnly = type 'main' uniquement), triées et numérotées dans
+// l'ordre de l'histoire (par identifiant).
+function buildSections(detail, storyOnly) {
+  return (detail.spots || [])
+    .map(spot => ({
+      quests: (spot.quests || [])
+        .filter(q => !storyOnly || q.type === 'main')
+        .slice()
+        .sort((a, b) => a.id - b.id),
+    }))
+    .filter(s => s.quests.length > 0)
+    .sort((a, b) => a.quests[0].id - b.quests[0].id);
+}
+
 async function showQuestScreen(war) {
   selectedQuestId = null;
   document.getElementById('chapter-screen').style.display = 'none';
@@ -1216,47 +1231,34 @@ async function showQuestScreen(war) {
     return item;
   };
 
-  // Remonte en haut les quêtes-charnières d'histoire (prologue / intro / outro),
-  // souvent enterrées tout en bas de la liste, surtout dans les Lostbelts.
-  const isBridge = (name) => /^(prologue|intro|outro)/i.test(name || '');
-  const bridge = [];
-  detail.spots.forEach(spot => (spot.quests || []).forEach(q => { if (isBridge(q.name)) bridge.push(q); }));
-  if (bridge.length) {
-    // prologue/intro d'abord, puis outro, puis par identifiant
-    bridge.sort((a, b) => {
-      const pa = /^outro/i.test(a.name) ? 1 : 0, pb = /^outro/i.test(b.name) ? 1 : 0;
-      return pa - pb || a.id - b.id;
-    });
+  // Sections triées dans l'ordre de l'histoire, numérotées « Section N ».
+  // On ne garde que les quêtes d'histoire (type 'main') ; si le chapitre n'en
+  // a aucune (war atypique), on retombe sur toutes les quêtes pour ne rien casser.
+  let sections = buildSections(detail, true);
+  if (sections.length === 0) sections = buildSections(detail, false);
+
+  if (sections.length === 0) {
+    container.innerHTML = '<div class="quest-loading">Aucune quête.</div>';
+    return;
+  }
+
+  sections.forEach((section, i) => {
     const group = document.createElement('div');
     group.className = 'spot-group';
     const sn = document.createElement('div');
     sn.className = 'spot-name';
-    sn.textContent = 'Prologue / Intro';
+    sn.textContent = 'Section ' + (i + 1);
     group.appendChild(sn);
-    bridge.forEach(quest => group.appendChild(makeItem(quest)));
-    container.appendChild(group);
-  }
-  const movedIds = new Set(bridge.map(q => q.id));
-
-  detail.spots.forEach(spot => {
-    const quests = (spot.quests || []).filter(q => !movedIds.has(q.id));
-    if (quests.length === 0) return;
-    const group = document.createElement('div');
-    group.className = 'spot-group';
-    if (spot.name) {
-      const sn = document.createElement('div');
-      sn.className = 'spot-name';
-      sn.textContent = spot.name;
-      group.appendChild(sn);
-    }
-    quests.forEach(quest => group.appendChild(makeItem(quest)));
+    section.quests.forEach(quest => group.appendChild(makeItem(quest)));
     container.appendChild(group);
   });
 }
 
 function allQuests() {
   if (!currentWarDetail) return [];
-  return currentWarDetail.spots.flatMap(s => (s.quests || []).map(q => ({ ...q })));
+  let sections = buildSections(currentWarDetail, true);
+  if (sections.length === 0) sections = buildSections(currentWarDetail, false);
+  return sections.flatMap(s => s.quests.map(q => ({ ...q })));
 }
 function nextQuest() {
   const all = allQuests();
