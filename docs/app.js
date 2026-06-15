@@ -874,8 +874,19 @@ function updateReaderScale() {
   document.documentElement.style.setProperty('--fgo-ui-unit', `${scale}px`);
 }
 
+function updateTextOverflow() {
+  const box = document.getElementById('text-box');
+  const text = document.getElementById('text');
+  if (!box || !text) return;
+  const hasOverflow = text.scrollHeight > text.clientHeight + 1;
+  const atBottom = !hasOverflow || text.scrollTop + text.clientHeight >= text.scrollHeight - 2;
+  box.classList.toggle('has-overflow', hasOverflow);
+  box.classList.toggle('at-bottom', atBottom);
+}
+
 window.addEventListener('resize', () => {
   updateReaderScale();
+  updateTextOverflow();
   Characters.resize();
 });
 
@@ -887,9 +898,55 @@ let currentWarDetail = null;
 const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
 const choiceSeAudio = document.getElementById('choice-se-player');
+const textElement = document.getElementById('text');
 audio.volume = 0.5;
 seAudio.volume = 0.8;
 choiceSeAudio.volume = 0.8;
+let textDragState = null;
+let suppressTextClick = false;
+textElement.addEventListener('scroll', updateTextOverflow);
+textElement.addEventListener('wheel', (e) => {
+  if (document.getElementById('text-box').classList.contains('has-overflow')) e.stopPropagation();
+});
+textElement.addEventListener('pointerdown', (e) => {
+  if (!document.getElementById('text-box').classList.contains('has-overflow')) return;
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  textDragState = {
+    pointerId: e.pointerId,
+    startY: e.clientY,
+    lastY: e.clientY,
+    moved: false,
+  };
+  textElement.classList.add('scroll-dragging');
+  textElement.setPointerCapture?.(e.pointerId);
+});
+textElement.addEventListener('pointermove', (e) => {
+  if (!textDragState || textDragState.pointerId !== e.pointerId) return;
+  const deltaY = e.clientY - textDragState.lastY;
+  if (Math.abs(e.clientY - textDragState.startY) > 4) textDragState.moved = true;
+  if (textDragState.moved) {
+    textElement.scrollTop -= deltaY;
+    updateTextOverflow();
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  textDragState.lastY = e.clientY;
+});
+function endTextDrag(e) {
+  if (!textDragState || (e && textDragState.pointerId !== e.pointerId)) return;
+  const moved = textDragState.moved;
+  textElement.classList.remove('scroll-dragging');
+  textElement.releasePointerCapture?.(textDragState.pointerId);
+  textDragState = null;
+  if (moved) {
+    suppressTextClick = true;
+    setTimeout(() => { suppressTextClick = false; }, 150);
+    e?.preventDefault();
+    e?.stopPropagation();
+  }
+}
+textElement.addEventListener('pointerup', endTextDrag);
+textElement.addEventListener('pointercancel', endTextDrag);
 
 const effectUntil = {};
 let screenShakeAnimation = null;
@@ -1463,7 +1520,11 @@ async function run() {
   if (line.talk) {
     document.getElementById('text-box').classList.remove('msg-hidden');
     document.getElementById('speaker').innerText = line.talk.speakerName;
-    document.getElementById('text').innerText = line.talk.detail;
+    const text = document.getElementById('text');
+    text.innerText = line.talk.detail;
+    text.scrollTop = 0;
+    updateTextOverflow();
+    requestAnimationFrame(updateTextOverflow);
     if (line.figure) {
       document.getElementById('cut-image').style.display = 'none';
       document.getElementById('characters-layer').style.display = 'block';
@@ -1488,7 +1549,17 @@ async function run() {
   else { isProcessing = false; }
 }
 
-function handleClick(e) { if (e.clientX < window.innerWidth / 2) prev(); else next(); }
+function handleClick(e) {
+  const text = document.getElementById('text');
+  const box = document.getElementById('text-box');
+  if (suppressTextClick) return;
+  if (
+    text.contains(e.target) &&
+    box.classList.contains('has-overflow') &&
+    !box.classList.contains('at-bottom')
+  ) return;
+  if (e.clientX < window.innerWidth / 2) prev(); else next();
+}
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
 function prev() {
   if (isProcessing) return;
