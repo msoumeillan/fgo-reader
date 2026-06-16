@@ -1208,7 +1208,7 @@ async function init() {
     wars = await fetchWars();
     buildChapterGrid();
   } catch (e) {
-    document.getElementById('ch-subtitle').textContent = "Erreur de chargement — vérifie ta connexion puis recharge";
+    document.getElementById('ch-subtitle').textContent = "Loading error — check your connection and reload";
   }
 }
 
@@ -1286,7 +1286,7 @@ async function showQuestScreen(war) {
 
   document.getElementById('quest-war-title').textContent = war.longName.replace(/\n/g, ' ');
   const container = document.getElementById('quest-list-container');
-  container.innerHTML = '<div class="quest-loading">Chargement…</div>';
+  container.innerHTML = '<div class="quest-loading">Loading…</div>';
   document.getElementById('quest-log').textContent = '';
 
   let detail;
@@ -1350,7 +1350,7 @@ async function showQuestScreen(war) {
   });
 
   if (!detail.script && sections.length === 0) {
-    container.innerHTML = '<div class="quest-loading">Aucune quête.</div>';
+    container.innerHTML = '<div class="quest-loading">No quests.</div>';
   }
 }
 
@@ -1397,9 +1397,9 @@ async function loadQuest(id) {
 
 async function go() {
   if (!selectedQuestId) return;
-  document.getElementById('quest-log').textContent = 'Chargement...';
+  document.getElementById('quest-log').textContent = 'Loading...';
   const ok = await loadQuest(selectedQuestId);
-  if (!ok) { document.getElementById('quest-log').textContent = 'Aucun contenu.'; return; }
+  if (!ok) { document.getElementById('quest-log').textContent = 'No content.'; return; }
   document.getElementById('quest-log').textContent = '';
   document.getElementById('quest-screen').style.display = 'none';
   document.getElementById('reader-container').style.display = 'block';
@@ -1445,8 +1445,8 @@ async function run() {
     const nq = nextQuest();
     const label = document.getElementById('end-next-label');
     const btnNext = document.getElementById('btn-next-quest');
-    if (nq) { label.textContent = `Suivant : ${nq.name}`; btnNext.style.display = ''; }
-    else { label.textContent = 'Fin du contenu disponible.'; btnNext.style.display = 'none'; }
+    if (nq) { label.textContent = `Next: ${nq.name}`; btnNext.style.display = ''; }
+    else { label.textContent = 'End of available content.'; btnNext.style.display = 'none'; }
     document.getElementById('end-overlay').classList.add('active');
     return;
   }
@@ -1639,7 +1639,7 @@ function renderDialogueLog() {
   if (entries.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'log-empty';
-    empty.textContent = 'Aucun dialogue dans l’historique.';
+    empty.textContent = 'No dialogue in the log yet.';
     list.appendChild(empty);
     return;
   }
