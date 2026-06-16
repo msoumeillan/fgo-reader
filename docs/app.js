@@ -894,6 +894,7 @@ window.addEventListener('resize', () => {
 // UI : menus + lecteur
 // ------------------------------------------------------------
 let sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuestId = null;
+let autoPlay = false, autoToken = 0;
 let currentWarDetail = null;
 const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
@@ -1554,6 +1555,7 @@ async function run() {
     }
     autoSkip = false;
     showAdvancePromptAfter(dialoguePromptDelayMs(line));
+    if (autoPlay) scheduleAutoAdvance(line);
   }
 
   if (autoSkip) {
@@ -1689,7 +1691,7 @@ function handleDialogueLogClick(e) {
 }
 
 function isReaderUiTarget(target) {
-  return Boolean(target.closest('#options-btn, #options-overlay, #choice-overlay, #end-overlay, #dialog-log-button, #log-overlay'));
+  return Boolean(target.closest('#options-btn, #options-overlay, #choice-overlay, #end-overlay, #dialog-log-button, #dialog-auto-toggle, #log-overlay'));
 }
 
 function handleReaderClick(e) {
@@ -1735,6 +1737,42 @@ function handleReaderClick(e) {
     lastMiddleClick = { time: now, x: e.clientX, y: e.clientY };
   }
 }
+// --- Lecture automatique (bouton AUTO) ---
+function toggleAuto(e) {
+  if (e) e.stopPropagation();
+  autoPlay = !autoPlay;
+  autoToken++; // annule tout minuteur auto en attente
+  const btn = document.getElementById('dialog-auto-toggle');
+  if (btn) {
+    btn.classList.toggle('active', autoPlay);
+    btn.setAttribute('aria-pressed', String(autoPlay));
+  }
+  // si on active l'auto alors qu'une réplique est déjà affichée, on relance
+  if (autoPlay && !isProcessing && sc[idx] && sc[idx].talk) scheduleAutoAdvance(sc[idx]);
+}
+
+function autoDelayMs(line) {
+  const len = (line.talk && line.talk.detail ? line.talk.detail : '').length;
+  const readMs = Math.min(7000, 800 + len * 45); // ~temps de lecture
+  return Math.max(readMs, dialoguePromptDelayMs(line));
+}
+
+function isReaderPaused() {
+  return document.getElementById('options-overlay').classList.contains('active')
+    || document.getElementById('log-overlay').getAttribute('aria-hidden') === 'false';
+}
+
+function scheduleAutoAdvance(line) {
+  const token = ++autoToken;
+  const myIdx = idx;
+  const tick = () => {
+    if (!autoPlay || autoToken !== token || idx !== myIdx) return;
+    if (isReaderPaused()) { setTimeout(tick, 400); return; } // pause si options/log ouverts
+    next();
+  };
+  setTimeout(tick, autoDelayMs(line));
+}
+
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
 function prev() {
   if (isProcessing) return;
@@ -1765,6 +1803,10 @@ function stop() {
   document.getElementById('text-box').classList.remove('msg-hidden');
   document.getElementById('bg-layer').style.backgroundImage = '';
   sc = []; idx = 0; isProcessing = false;
+  // coupe la lecture auto en quittant
+  autoPlay = false; autoToken++;
+  const autoBtn = document.getElementById('dialog-auto-toggle');
+  if (autoBtn) { autoBtn.classList.remove('active'); autoBtn.setAttribute('aria-pressed', 'false'); }
   showChapterScreen();
 }
 

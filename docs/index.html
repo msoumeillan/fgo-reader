@@ -291,6 +291,14 @@
             border-bottom: calc(7 * var(--u)) solid transparent;
             border-left: calc(10 * var(--u)) solid rgba(239,245,242,0.88);
         }
+        #dialog-auto-toggle {
+            appearance: none; display: block; width: 100%; margin: 0; padding: 0;
+            border: 0; background: transparent; color: inherit; font: inherit;
+            text-align: inherit; cursor: pointer;
+        }
+        #dialog-auto-toggle.active { color: #5aa0ff; text-shadow: 0 0 calc(4 * var(--u)) rgba(40,120,255,0.8); }
+        #dialog-auto-toggle.active .dialog-auto-button { border-color: #5aa0ff; }
+        #dialog-auto-toggle.active .dialog-auto-button::after { border-left-color: #5aa0ff; }
         #next-icon {
             position: absolute; bottom: calc(3 * var(--u)); right: calc(8 * var(--u));
             width: calc(34 * var(--u)); height: calc(34 * var(--u));
@@ -516,8 +524,10 @@
                     <div class="dialog-log-arrow"></div>
                     <div class="dialog-log">LOG</div>
                 </button>
-                <div class="dialog-auto-button"></div>
-                <div class="dialog-auto">AUTO</div>
+                <button id="dialog-auto-toggle" type="button" onclick="toggleAuto(event)" aria-label="Auto-play" aria-pressed="false">
+                    <div class="dialog-auto-button"></div>
+                    <div class="dialog-auto">AUTO</div>
+                </button>
             </div>
             <div id="next-icon"></div>
         </div>
