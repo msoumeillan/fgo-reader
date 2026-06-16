@@ -100,6 +100,13 @@
 
         /* === READER === */
         #reader-container { display: none; width: 100%; height: 100%; position: relative; overflow: hidden; }
+        #reader-container.ui-hidden #text-box,
+        #reader-container.ui-hidden #options-btn {
+            display: none;
+        }
+        #reader-container.prompt-hidden #next-icon {
+            display: none;
+        }
         #visual-stage, #camera-layer { position: absolute; inset: 0; pointer-events: none; }
         #visual-stage { z-index: 0; }
         #camera-layer { transform-origin: center center; }
@@ -253,6 +260,19 @@
             text-align: center;
             text-shadow: 0 calc(1 * var(--u)) calc(2 * var(--u)) #061429;
         }
+        #dialog-log-button {
+            appearance: none;
+            display: block;
+            width: 100%;
+            margin: 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font: inherit;
+            text-align: inherit;
+            cursor: pointer;
+        }
         .dialog-log-arrow {
             width: 0; height: 0; margin: 0 auto calc(1 * var(--u));
             border-left: calc(13 * var(--u)) solid transparent;
@@ -375,6 +395,60 @@
             outline: none;
         }
         .choice-btn:active { transform: scale(0.99); }
+
+        #log-overlay {
+            --u: var(--fgo-ui-unit, 1px);
+            display: none;
+            position: absolute; inset: 0; z-index: 55;
+            background: rgba(0,0,0,0.68);
+        }
+        #log-overlay.active { display: block; }
+        #log-panel {
+            position: absolute; inset: 0;
+            overflow-y: auto; overscroll-behavior: contain;
+            padding: calc(26 * var(--u)) calc(78 * var(--u)) calc(115 * var(--u)) calc(112 * var(--u));
+            scrollbar-width: thin;
+            scrollbar-color: #fff rgba(255,255,255,0.18);
+        }
+        #log-panel::-webkit-scrollbar { width: calc(18 * var(--u)); }
+        #log-panel::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.12);
+            border-left: calc(1 * var(--u)) solid rgba(255,255,255,0.35);
+            border-right: calc(1 * var(--u)) solid rgba(255,255,255,0.35);
+        }
+        #log-panel::-webkit-scrollbar-thumb {
+            background: linear-gradient(90deg, #fff8dc, #ffffff 45%, #f0b73a);
+            border: calc(2 * var(--u)) solid rgba(158,100,20,0.85);
+            border-radius: calc(2 * var(--u));
+        }
+        #log-list {
+            max-width: calc(805 * var(--u));
+            margin: 0 auto;
+            color: #f7f7f7;
+            font-family: "Segoe UI", sans-serif;
+            text-shadow: 0 calc(2 * var(--u)) calc(3 * var(--u)) #000, 0 0 calc(3 * var(--u)) #000;
+        }
+        .log-entry { margin: 0 0 calc(25 * var(--u)); }
+        .log-speaker {
+            margin: 0 0 calc(12 * var(--u));
+            font-size: calc(25 * var(--u));
+            line-height: 1.1;
+            font-weight: 700;
+        }
+        .log-text {
+            margin: 0;
+            padding-left: calc(44 * var(--u));
+            white-space: pre-line;
+            font-size: calc(28 * var(--u));
+            line-height: 1.45;
+            font-weight: 600;
+        }
+        .log-empty {
+            margin-top: calc(180 * var(--u));
+            text-align: center;
+            color: rgba(255,255,255,0.72);
+            font-size: calc(24 * var(--u));
+        }
     </style>
 </head>
 <body>
@@ -433,17 +507,24 @@
         <div id="wipe-layer"></div>
         <div id="fade-layer"></div>
         <div id="flash-layer"></div>
-        <div id="text-box" onclick="handleClick(event)">
+        <div id="text-box">
             <div id="speaker-tab"><div id="speaker"></div></div>
             <div id="text"></div>
             <div id="text-overflow-indicator" aria-hidden="true"></div>
-            <div id="dialog-controls" aria-hidden="true">
-                <div class="dialog-log-arrow"></div>
-                <div class="dialog-log">LOG</div>
+            <div id="dialog-controls">
+                <button id="dialog-log-button" type="button" onclick="openDialogueLog(event)" aria-label="Ouvrir l'historique de lecture">
+                    <div class="dialog-log-arrow"></div>
+                    <div class="dialog-log">LOG</div>
+                </button>
                 <div class="dialog-auto-button"></div>
                 <div class="dialog-auto">AUTO</div>
             </div>
             <div id="next-icon"></div>
+        </div>
+        <div id="log-overlay" aria-hidden="true">
+            <div id="log-panel">
+                <div id="log-list"></div>
+            </div>
         </div>
         <div id="choice-overlay">
             <div id="choice-box"><p>Choisissez une réponse</p></div>

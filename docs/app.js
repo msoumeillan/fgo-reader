@@ -899,11 +899,16 @@ const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
 const choiceSeAudio = document.getElementById('choice-se-player');
 const textElement = document.getElementById('text');
+const readerContainer = document.getElementById('reader-container');
+const logOverlay = document.getElementById('log-overlay');
 audio.volume = 0.5;
 seAudio.volume = 0.8;
 choiceSeAudio.volume = 0.8;
 let textDragState = null;
 let suppressTextClick = false;
+let lastMiddleClick = null;
+let logPointerState = null;
+let advancePromptToken = 0;
 textElement.addEventListener('scroll', updateTextOverflow);
 textElement.addEventListener('wheel', (e) => {
   if (document.getElementById('text-box').classList.contains('has-overflow')) e.stopPropagation();
@@ -947,6 +952,21 @@ function endTextDrag(e) {
 }
 textElement.addEventListener('pointerup', endTextDrag);
 textElement.addEventListener('pointercancel', endTextDrag);
+readerContainer.addEventListener('click', handleReaderClick);
+logOverlay.addEventListener('pointerdown', (e) => {
+  logPointerState = { x: e.clientX, y: e.clientY, moved: false };
+});
+logOverlay.addEventListener('pointermove', (e) => {
+  if (!logPointerState) return;
+  if (Math.abs(e.clientX - logPointerState.x) > 8 || Math.abs(e.clientY - logPointerState.y) > 8) {
+    logPointerState.moved = true;
+  }
+});
+logOverlay.addEventListener('pointercancel', () => { logPointerState = null; });
+logOverlay.addEventListener('click', handleDialogueLogClick);
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('log-overlay').classList.contains('active')) closeDialogueLog(e);
+});
 
 const effectUntil = {};
 let screenShakeAnimation = null;
@@ -1419,6 +1439,7 @@ function showChoices(choices) {
 }
 
 async function run() {
+  setAdvancePromptVisible(false);
   if (idx >= sc.length) {
     audio.pause();
     const nq = nextQuest();
@@ -1532,6 +1553,7 @@ async function run() {
       await Characters.update(line.figure.code, line.figure.url, line.figure.face, line.figure.comm);
     }
     autoSkip = false;
+    showAdvancePromptAfter(dialoguePromptDelayMs(line));
   }
 
   if (autoSkip) {
@@ -1549,7 +1571,135 @@ async function run() {
   else { isProcessing = false; }
 }
 
-function handleClick(e) {
+function hideReaderUi() {
+  readerContainer.classList.add('ui-hidden');
+}
+
+function showReaderUi() {
+  readerContainer.classList.remove('ui-hidden');
+}
+
+function setAdvancePromptVisible(visible) {
+  advancePromptToken++;
+  readerContainer.classList.toggle('prompt-hidden', !visible);
+}
+
+function showAdvancePromptAfter(delayMs) {
+  const delay = Math.max(0, Number(delayMs) || 0);
+  if (delay <= 0) {
+    setAdvancePromptVisible(true);
+    return;
+  }
+  const token = ++advancePromptToken;
+  readerContainer.classList.add('prompt-hidden');
+  setTimeout(() => {
+    if (advancePromptToken === token) readerContainer.classList.remove('prompt-hidden');
+  }, delay);
+}
+
+function positiveDurationMs(value) {
+  const duration = Number(value);
+  return Number.isFinite(duration) && duration > 0 ? duration : 0;
+}
+
+function dialoguePromptDelayMs(line) {
+  return Math.max(
+    positiveDurationMs(line.waitMs),
+    positiveDurationMs(line.frameDurationMs),
+    positiveDurationMs(line.screenFade?.durationMs),
+    positiveDurationMs(line.flash ? line.flash.inMs + line.flash.outMs : 0),
+    positiveDurationMs(line.flashOutMs),
+    positiveDurationMs(line.wipe?.durationMs),
+    positiveDurationMs(line.wipeFilter?.durationMs),
+    positiveDurationMs(line.screenShake?.durationMs),
+    positiveDurationMs(line.camera?.durationMs),
+    positiveDurationMs(line.charFadeOutMs),
+    positiveDurationMs(line.charFadeInMs),
+    positiveDurationMs(line.charCrossFadeMs),
+    positiveDurationMs(line.imageFadeOutMs),
+    positiveDurationMs(line.imageFadeInMs),
+    positiveDurationMs(line.charMove?.durationMs)
+  );
+}
+
+function dialogueLogEntries() {
+  return sc
+    .slice(0, Math.min(idx + 1, sc.length))
+    .filter(line => line.talk && line.talk.detail)
+    .map(line => ({
+      speaker: line.talk.speakerName || '',
+      text: line.talk.detail || '',
+    }));
+}
+
+function renderDialogueLog() {
+  const list = document.getElementById('log-list');
+  list.replaceChildren();
+  const entries = dialogueLogEntries();
+  if (entries.length === 0) {
+    const empty = document.createElement('div');
+    empty.className = 'log-empty';
+    empty.textContent = 'Aucun dialogue dans l’historique.';
+    list.appendChild(empty);
+    return;
+  }
+
+  entries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'log-entry';
+    const speaker = document.createElement('div');
+    speaker.className = 'log-speaker';
+    speaker.textContent = entry.speaker;
+    const text = document.createElement('div');
+    text.className = 'log-text';
+    text.textContent = entry.text;
+    item.append(speaker, text);
+    list.appendChild(item);
+  });
+}
+
+function openDialogueLog(e) {
+  e?.preventDefault();
+  e?.stopPropagation();
+  renderDialogueLog();
+  const overlay = document.getElementById('log-overlay');
+  const panel = document.getElementById('log-panel');
+  overlay.classList.add('active');
+  overlay.setAttribute('aria-hidden', 'false');
+  requestAnimationFrame(() => { panel.scrollTop = panel.scrollHeight; });
+}
+
+function closeDialogueLog(e) {
+  e?.preventDefault();
+  e?.stopPropagation();
+  const overlay = document.getElementById('log-overlay');
+  overlay.classList.remove('active');
+  overlay.setAttribute('aria-hidden', 'true');
+  logPointerState = null;
+}
+
+function handleDialogueLogClick(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (logPointerState?.moved) {
+    logPointerState = null;
+    return;
+  }
+  closeDialogueLog(e);
+}
+
+function isReaderUiTarget(target) {
+  return Boolean(target.closest('#options-btn, #options-overlay, #choice-overlay, #end-overlay, #dialog-log-button, #log-overlay'));
+}
+
+function handleReaderClick(e) {
+  if (readerContainer.classList.contains('ui-hidden')) {
+    showReaderUi();
+    lastMiddleClick = null;
+    return;
+  }
+  if (isReaderUiTarget(e.target)) return;
+
   const text = document.getElementById('text');
   const box = document.getElementById('text-box');
   if (suppressTextClick) return;
@@ -1558,7 +1708,32 @@ function handleClick(e) {
     box.classList.contains('has-overflow') &&
     !box.classList.contains('at-bottom')
   ) return;
-  if (e.clientX < window.innerWidth / 2) prev(); else next();
+
+  const third = window.innerWidth / 3;
+  if (e.clientX < third) {
+    lastMiddleClick = null;
+    prev();
+    return;
+  }
+  if (e.clientX >= third * 2) {
+    lastMiddleClick = null;
+    next();
+    return;
+  }
+
+  const now = performance.now();
+  const isDoubleMiddleClick =
+    lastMiddleClick &&
+    now - lastMiddleClick.time <= 350 &&
+    Math.abs(e.clientX - lastMiddleClick.x) <= 80 &&
+    Math.abs(e.clientY - lastMiddleClick.y) <= 80;
+
+  if (isDoubleMiddleClick) {
+    hideReaderUi();
+    lastMiddleClick = null;
+  } else {
+    lastMiddleClick = { time: now, x: e.clientX, y: e.clientY };
+  }
 }
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
 function prev() {
@@ -1584,6 +1759,8 @@ function stop() {
   document.getElementById('end-overlay').classList.remove('active');
   document.getElementById('options-overlay').classList.remove('active');
   document.getElementById('choice-overlay').classList.remove('active');
+  document.getElementById('log-overlay').classList.remove('active');
+  document.getElementById('log-overlay').setAttribute('aria-hidden', 'true');
   document.getElementById('cut-image').style.display = 'none';
   document.getElementById('text-box').classList.remove('msg-hidden');
   document.getElementById('bg-layer').style.backgroundImage = '';
