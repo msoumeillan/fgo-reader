@@ -291,6 +291,14 @@
             border-bottom: calc(7 * var(--u)) solid transparent;
             border-left: calc(10 * var(--u)) solid rgba(239,245,242,0.88);
         }
+        #dialog-auto-toggle {
+            appearance: none; display: block; width: 100%; margin: 0; padding: 0;
+            border: 0; background: transparent; color: inherit; font: inherit;
+            text-align: inherit; cursor: pointer;
+        }
+        #dialog-auto-toggle.active { color: #5aa0ff; text-shadow: 0 0 calc(4 * var(--u)) rgba(40,120,255,0.8); }
+        #dialog-auto-toggle.active .dialog-auto-button { border-color: #5aa0ff; }
+        #dialog-auto-toggle.active .dialog-auto-button::after { border-left-color: #5aa0ff; }
         #next-icon {
             position: absolute; bottom: calc(3 * var(--u)); right: calc(8 * var(--u));
             width: calc(34 * var(--u)); height: calc(34 * var(--u));
@@ -318,7 +326,7 @@
         #options-box h3 { margin: 0; color: rgba(160,190,255,0.7); font-size: 0.8rem; letter-spacing: 0.2em; text-transform: uppercase; text-align: center; }
         .opt-row { display: flex; flex-direction: column; gap: 8px; }
         .opt-label { font-size: 0.9rem; color: #c8ddff; display: flex; justify-content: space-between; }
-        #volume-slider { width: 100%; accent-color: #3a7bd5; cursor: pointer; height: 4px; }
+        #volume-slider, #auto-speed-slider { width: 100%; accent-color: #3a7bd5; cursor: pointer; height: 4px; }
         #options-box .opt-btn { padding: 12px 20px; border-radius: 7px; font-size: 0.95rem; cursor: pointer; border: 1px solid rgba(80,130,255,0.3); background: rgba(20,40,100,0.6); color: #c8ddff; transition: background 0.15s; }
         #options-box .opt-btn:hover { background: rgba(40,70,160,0.8); }
 
@@ -486,6 +494,10 @@
                     <span class="opt-label">Music volume <span id="vol-val">50%</span></span>
                     <input id="volume-slider" type="range" min="0" max="100" value="50" oninput="setVolume(this.value)">
                 </div>
+                <div class="opt-row">
+                    <span class="opt-label">Auto speed <span id="auto-speed-val">1.0x</span></span>
+                    <input id="auto-speed-slider" type="range" min="50" max="200" step="10" value="100" oninput="setAutoSpeed(this.value)">
+                </div>
                 <button class="opt-btn" onclick="stop()">↩ Back to menu</button>
             </div>
         </div>
@@ -516,8 +528,10 @@
                     <div class="dialog-log-arrow"></div>
                     <div class="dialog-log">LOG</div>
                 </button>
-                <div class="dialog-auto-button"></div>
-                <div class="dialog-auto">AUTO</div>
+                <button id="dialog-auto-toggle" type="button" onclick="toggleAuto(event)" aria-label="Auto-play" aria-pressed="false">
+                    <div class="dialog-auto-button"></div>
+                    <div class="dialog-auto">AUTO</div>
+                </button>
             </div>
             <div id="next-icon"></div>
         </div>
