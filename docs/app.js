@@ -894,7 +894,7 @@ window.addEventListener('resize', () => {
 // UI : menus + lecteur
 // ------------------------------------------------------------
 let sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuestId = null;
-let autoPlay = false, autoToken = 0;
+let autoPlay = false, autoToken = 0, autoSpeed = 1;
 let currentWarDetail = null;
 const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
@@ -910,6 +910,8 @@ let suppressTextClick = false;
 let lastMiddleClick = null;
 let logPointerState = null;
 let advancePromptToken = 0;
+let textRevealToken = 0;
+let textRevealState = null;
 textElement.addEventListener('scroll', updateTextOverflow);
 textElement.addEventListener('wheel', (e) => {
   if (document.getElementById('text-box').classList.contains('has-overflow')) e.stopPropagation();
@@ -1373,6 +1375,13 @@ function nextQuest() {
 
 function toggleOptions() { document.getElementById('options-overlay').classList.toggle('active'); }
 function setVolume(v) { audio.volume = v / 100; document.getElementById('vol-val').textContent = v + '%'; }
+function setAutoSpeed(v) {
+  const value = Math.min(200, Math.max(50, Number(v) || 100));
+  autoSpeed = value / 100;
+  const slider = document.getElementById('auto-speed-slider');
+  if (slider) slider.value = String(value);
+  document.getElementById('auto-speed-val').textContent = `${autoSpeed.toFixed(1)}x`;
+}
 
 async function loadQuest(id) {
   currentQuestId = id;
@@ -1441,6 +1450,8 @@ function showChoices(choices) {
 
 async function run() {
   setAdvancePromptVisible(false);
+  textRevealToken++;
+  textRevealState = null;
   if (idx >= sc.length) {
     audio.pause();
     const nq = nextQuest();
@@ -1542,11 +1553,20 @@ async function run() {
   if (line.talk) {
     document.getElementById('text-box').classList.remove('msg-hidden');
     document.getElementById('speaker').innerText = line.talk.speakerName;
-    const text = document.getElementById('text');
-    text.innerText = line.talk.detail;
-    text.scrollTop = 0;
-    updateTextOverflow();
-    requestAnimationFrame(updateTextOverflow);
+    const promptDelay = dialoguePromptDelayMs(line);
+    const myIdx = idx;
+    if (autoPlay) {
+      const revealStartedAt = performance.now();
+      startTextReveal(line.talk.detail, () => {
+        if (idx !== myIdx) return;
+        const remainingPromptDelay = Math.max(0, promptDelay - (performance.now() - revealStartedAt));
+        showAdvancePromptAfter(remainingPromptDelay);
+        if (autoPlay) scheduleAutoAdvance(line, Math.max(postRevealAutoDelayMs(line), remainingPromptDelay));
+      });
+    } else {
+      setDialogueTextImmediately(line.talk.detail);
+      showAdvancePromptAfter(promptDelay);
+    }
     if (line.figure) {
       document.getElementById('cut-image').style.display = 'none';
       document.getElementById('characters-layer').style.display = 'block';
@@ -1554,8 +1574,6 @@ async function run() {
       await Characters.update(line.figure.code, line.figure.url, line.figure.face, line.figure.comm);
     }
     autoSkip = false;
-    showAdvancePromptAfter(dialoguePromptDelayMs(line));
-    if (autoPlay) scheduleAutoAdvance(line);
   }
 
   if (autoSkip) {
@@ -1622,6 +1640,83 @@ function dialoguePromptDelayMs(line) {
     positiveDurationMs(line.imageFadeInMs),
     positiveDurationMs(line.charMove?.durationMs)
   );
+}
+
+const TEXT_REVEAL_INTERVAL_MS = 34;
+
+function autoScaledMs(ms, minimumMs = 0) {
+  return Math.max(minimumMs, ms / autoSpeed);
+}
+
+function textRevealIntervalMs() {
+  return autoScaledMs(TEXT_REVEAL_INTERVAL_MS, 12);
+}
+
+function refreshDialogueTextLayout() {
+  updateTextOverflow();
+  requestAnimationFrame(updateTextOverflow);
+}
+
+function setDialogueTextImmediately(detail) {
+  textRevealToken++;
+  textRevealState = null;
+  textElement.innerText = detail || '';
+  textElement.scrollTop = 0;
+  refreshDialogueTextLayout();
+}
+
+function finishTextReveal(token) {
+  if (!textRevealState || textRevealState.token !== token) return false;
+  const state = textRevealState;
+  textElement.innerText = state.fullText;
+  if (autoPlay && document.getElementById('text-box').classList.contains('has-overflow')) {
+    textElement.scrollTop = textElement.scrollHeight;
+  }
+  refreshDialogueTextLayout();
+  textRevealState = null;
+  state.onComplete?.();
+  return true;
+}
+
+function completeTextReveal() {
+  if (!textRevealState) return false;
+  const token = textRevealState.token;
+  textRevealToken++;
+  return finishTextReveal(token);
+}
+
+function startTextReveal(detail, onComplete) {
+  const fullText = detail || '';
+  const chars = Array.from(fullText);
+  const token = ++textRevealToken;
+  let visibleChars = 0;
+
+  textRevealState = { token, fullText, onComplete };
+  textElement.innerText = '';
+  textElement.scrollTop = 0;
+  refreshDialogueTextLayout();
+
+  if (chars.length === 0) {
+    finishTextReveal(token);
+    return;
+  }
+
+  const revealNext = () => {
+    if (!textRevealState || textRevealState.token !== token) return;
+    visibleChars++;
+    textElement.innerText = chars.slice(0, visibleChars).join('');
+    if (autoPlay && document.getElementById('text-box').classList.contains('has-overflow')) {
+      textElement.scrollTop = textElement.scrollHeight;
+    }
+    refreshDialogueTextLayout();
+    if (visibleChars >= chars.length) {
+      finishTextReveal(token);
+      return;
+    }
+    setTimeout(revealNext, textRevealIntervalMs());
+  };
+
+  setTimeout(revealNext, textRevealIntervalMs());
 }
 
 function dialogueLogEntries() {
@@ -1702,6 +1797,11 @@ function handleReaderClick(e) {
   }
   if (isReaderUiTarget(e.target)) return;
 
+  if (completeTextReveal()) {
+    lastMiddleClick = null;
+    return;
+  }
+
   const text = document.getElementById('text');
   const box = document.getElementById('text-box');
   if (suppressTextClick) return;
@@ -1754,7 +1854,12 @@ function toggleAuto(e) {
 function autoDelayMs(line) {
   const len = (line.talk && line.talk.detail ? line.talk.detail : '').length;
   const readMs = Math.min(7000, 800 + len * 45); // ~temps de lecture
-  return Math.max(readMs, dialoguePromptDelayMs(line));
+  return Math.max(autoScaledMs(readMs, 250), dialoguePromptDelayMs(line));
+}
+
+function postRevealAutoDelayMs(line) {
+  const len = (line.talk && line.talk.detail ? line.talk.detail : '').length;
+  return autoScaledMs(Math.min(2500, 800 + len * 12), 250);
 }
 
 function isReaderPaused() {
@@ -1762,7 +1867,7 @@ function isReaderPaused() {
     || document.getElementById('log-overlay').getAttribute('aria-hidden') === 'false';
 }
 
-function scheduleAutoAdvance(line) {
+function scheduleAutoAdvance(line, delayMs = autoDelayMs(line)) {
   const token = ++autoToken;
   const myIdx = idx;
   const tick = () => {
@@ -1770,7 +1875,7 @@ function scheduleAutoAdvance(line) {
     if (isReaderPaused()) { setTimeout(tick, 400); return; } // pause si options/log ouverts
     next();
   };
-  setTimeout(tick, autoDelayMs(line));
+  setTimeout(tick, Math.max(0, delayMs));
 }
 
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
