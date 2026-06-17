@@ -1879,19 +1879,63 @@ function scheduleAutoAdvance(line, delayMs = autoDelayMs(line)) {
 }
 
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
-function prev() {
+// Reconstruit l'état visuel (décor, sprites, image) tel qu'il doit être JUSTE
+// AVANT l'étape targetIdx, en rejouant instantanément la scène en cours depuis
+// le dernier changement de décor. Sans ça, un retour arrière laisse à l'écran
+// les sprites ajoutés plus loin.
+async function rebuildVisualBefore(targetIdx) {
+  let bgIdx = -1;
+  for (let i = targetIdx; i >= 0; i--) { if (sc[i].background) { bgIdx = i; break; } }
+
+  Characters.reset();
+  const ci = document.getElementById('cut-image');
+  ci.style.display = 'none';
+  ci.style.opacity = '1';
+  document.getElementById('characters-layer').style.display = 'block';
+  document.getElementById('text-box').classList.remove('msg-hidden');
+  if (bgIdx >= 0) document.getElementById('bg-layer').style.backgroundImage = `url('${sc[bgIdx].background}')`;
+
+  let image = null;
+  for (let i = Math.max(0, bgIdx); i < targetIdx; i++) {
+    const line = sc[i];
+    if (!line) continue;
+    if (line.clearChars) { Characters.clear(); image = null; }
+    if (line.hideImage) image = null;
+    if (line.hideCharCode) Characters.hide(line.hideCharCode, 0);
+    if (line.charShadow) Characters.setShadow(line.charShadow.code, line.charShadow.shadow);
+    if (line.charDepth) Characters.setDepth(line.charDepth.code, line.charDepth.depth);
+    if (line.charTalkToggle) Characters.setTalkToggle(line.charTalkToggle);
+    if (Object.prototype.hasOwnProperty.call(line, 'focusChar')) Characters.focus(line.focusChar);
+    const fig = line.showChar || line.figure;
+    if (fig) {
+      image = null;
+      if (line.charPosition !== undefined) Characters.move(fig.code, line.charPosition, 0);
+      await Characters.update(fig.code, fig.url, fig.face, fig.comm);
+      const c = Characters.get(fig.code, false);
+      if (c) c.style.opacity = '1';
+    }
+    if (line.showImage) image = line.showImage.url;
+    if (line.charMove) Characters.move(line.charMove.code, line.charMove.position, 0);
+    if (line.textBox === 'off') document.getElementById('text-box').classList.add('msg-hidden');
+    else if (line.textBox === 'on') document.getElementById('text-box').classList.remove('msg-hidden');
+  }
+
+  if (image) {
+    document.getElementById('characters-layer').style.display = 'none';
+    ci.style.backgroundImage = `url("${image}")`;
+    ci.style.display = 'block';
+  }
+}
+
+async function prev() {
   if (isProcessing) return;
-  // Revient à la réplique précédente (en sautant les étapes auto :
-  // décors, musiques...) et restaure le décor en vigueur à ce moment-là
+  // Revient à la réplique précédente (en sautant les étapes auto : décors,
+  // musiques...) et reconstruit la scène à ce moment-là (sprites compris).
   let j = idx - 1;
   while (j >= 0 && !sc[j].talk) j--;
   if (j < 0) return;
-  for (let k = j; k >= 0; k--) {
-    if (sc[k].background) {
-      document.getElementById('bg-layer').style.backgroundImage = `url('${sc[k].background}')`;
-      break;
-    }
-  }
+  autoToken++; // annule un éventuel minuteur d'auto-avance
+  await rebuildVisualBefore(j);
   idx = j; run();
 }
 function stop() {
