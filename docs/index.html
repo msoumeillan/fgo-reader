@@ -116,6 +116,8 @@
            largeur de référence (1024) que le décor : on les affiche donc à la
            largeur de l'écran, ancrées en haut, pour les composer comme le jeu. */
         #cut-image { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; background-position: center top; background-size: 100% auto; display: none; pointer-events: none; }
+        /* Cinématique vidéo (criMovie) : plein écran au-dessus de la scène et du texte */
+        #movie-player { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 40; background: #000; object-fit: contain; display: none; }
 
         #characters-layer { position: absolute; inset: 0; z-index: 5; pointer-events: none; }
         .char-container {
@@ -519,6 +521,7 @@
         <div id="wipe-layer"></div>
         <div id="fade-layer"></div>
         <div id="flash-layer"></div>
+        <video id="movie-player" playsinline preload="auto"></video>
         <div id="text-box">
             <div id="speaker-tab"><div id="speaker"></div></div>
             <div id="text"></div>

@@ -562,6 +562,12 @@ async function parseScriptUrls(scriptUrls) {
           step.se = `${ASSETS}/${REGION}/Audio/${seFolder}/${seName}.mp3`;
         }
 
+        // 4c) Cinématique vidéo : [criMovie talk_mov059 bgmPlay false]
+        const movieMatch = line.match(/\[criMovie\s+([a-zA-Z0-9_]+)/);
+        if (movieMatch) {
+          step.movie = `${ASSETS}/${REGION}/Movie/${movieMatch[1]}.mp4`;
+        }
+
         // 5) Speaker lines: "＠A：???" ou "＠Mash"
         if (line.startsWith("@") || line.startsWith("＠")) {
           const raw = cleanDialogueText(line.substring(1));
@@ -895,6 +901,7 @@ window.addEventListener('resize', () => {
 // ------------------------------------------------------------
 let sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuestId = null;
 let autoPlay = false, autoToken = 0, autoSpeed = 1;
+let movieActive = false;
 let currentWarDetail = null;
 const audio = document.getElementById('bgm-player');
 const seAudio = document.getElementById('se-player');
@@ -1390,6 +1397,7 @@ async function loadQuest(id) {
   resetVisualEffects();
   document.getElementById('cut-image').style.display = 'none';
   document.getElementById('text-box').classList.remove('msg-hidden');
+  resetMovie();
   audio.src = '';
   audio.load();
   let script;
@@ -1469,6 +1477,10 @@ async function run() {
   else if (line.bgm && audio.src !== line.bgm) { audio.src = line.bgm; audio.play().catch(() => {}); }
 
   if (line.se) { seAudio.src = line.se; seAudio.play().catch(() => {}); }
+
+  // Cinématique vidéo : on joue le mp4 plein écran et on bloque le flux
+  // jusqu'à la fin de la vidéo (ou un clic pour passer).
+  if (line.movie) { playMovie(line.movie); isProcessing = true; return; }
 
   if (line.background) {
     document.getElementById('bg-layer').style.backgroundImage = `url('${line.background}')`;
@@ -1790,6 +1802,8 @@ function isReaderUiTarget(target) {
 }
 
 function handleReaderClick(e) {
+  // Pendant une cinématique : un clic la passe
+  if (movieActive) { endMovie(); return; }
   if (readerContainer.classList.contains('ui-hidden')) {
     showReaderUi();
     lastMiddleClick = null;
@@ -1878,6 +1892,58 @@ function scheduleAutoAdvance(line, delayMs = autoDelayMs(line)) {
   setTimeout(tick, Math.max(0, delayMs));
 }
 
+// --- Cinématiques vidéo (criMovie) ---
+function isFillerWait(s) {
+  // étape de pure synchro (ex. [wt 11.0]) sans contenu visible/sonore notable
+  return s && (s.waitMs || s.holdFrame) && !s.talk && !s.movie && !s.choices
+    && !s.showChar && !s.figure && !s.showImage && !s.background;
+}
+
+function playMovie(url) {
+  const v = document.getElementById('movie-player');
+  if (!v) { idx++; run(); return; }
+  movieActive = true;
+  audio.pause(); // couper la BGM pendant la vidéo (le film a son propre son)
+  autoToken++;   // pas d'auto-avance pendant le film
+  v.src = url;
+  v.style.display = 'block';
+  v.currentTime = 0;
+  v.onended = endMovie;
+  v.onerror = endMovie;
+  v.play().catch(() => {}); // si l'autoplay est bloqué, un clic passera la vidéo
+}
+
+function resetMovie() {
+  movieActive = false;
+  const v = document.getElementById('movie-player');
+  if (v) {
+    v.onended = null; v.onerror = null;
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
+    v.style.display = 'none';
+  }
+}
+
+function endMovie() {
+  if (!movieActive) return;
+  movieActive = false;
+  const v = document.getElementById('movie-player');
+  if (v) {
+    v.onended = null; v.onerror = null;
+    v.pause();
+    v.removeAttribute('src');
+    v.load();
+    v.style.display = 'none';
+  }
+  // sauter l'attente de synchro du jeu qui suit le film (ex. [wt 11.0])
+  let n = idx + 1;
+  while (n < sc.length && isFillerWait(sc[n])) n++;
+  idx = n;
+  isProcessing = false;
+  run();
+}
+
 function next() { if (!isProcessing && idx < sc.length) { idx++; run(); } }
 // Reconstruit l'état visuel (décor, sprites, image) tel qu'il doit être JUSTE
 // AVANT l'étape targetIdx, en rejouant instantanément la scène en cours depuis
@@ -1951,6 +2017,7 @@ function stop() {
   document.getElementById('cut-image').style.display = 'none';
   document.getElementById('text-box').classList.remove('msg-hidden');
   document.getElementById('bg-layer').style.backgroundImage = '';
+  resetMovie();
   sc = []; idx = 0; isProcessing = false;
   // coupe la lecture auto en quittant
   autoPlay = false; autoToken++;
