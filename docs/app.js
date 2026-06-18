@@ -111,13 +111,14 @@ function secondsToMs(value) {
   return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : 0;
 }
 
-async function fetchQuestScript(questId) {
+async function fetchQuestScript(questId, phase) {
   const qRes = await fetch(`${API}/nice/${REGION}/quest/${questId}`);
   const data = await qRes.json();
 
   let scriptUrls = [];
   if (data.phaseScripts) {
     data.phaseScripts.forEach((p) => {
+      if (phase !== undefined && p.phase !== phase) return; // une seule phase si demandée
       if (p.scripts) p.scripts.forEach((s) => scriptUrls.push(s.script));
     });
   }
@@ -899,7 +900,8 @@ window.addEventListener('resize', () => {
 // ------------------------------------------------------------
 // UI : menus + lecteur
 // ------------------------------------------------------------
-let sc = [], idx = 0, isProcessing = false, currentQuestId = null, selectedQuestId = null;
+let sc = [], idx = 0, isProcessing = false;
+let currentEntries = [], currentEntryIndex = -1;
 let autoPlay = false, autoToken = 0, autoSpeed = 1;
 let movieActive = false;
 let currentWarDetail = null;
@@ -1289,7 +1291,7 @@ function buildSections(detail, storyOnly) {
 }
 
 async function showQuestScreen(war) {
-  selectedQuestId = null;
+  currentEntries = []; currentEntryIndex = -1;
   document.getElementById('chapter-screen').style.display = 'none';
   const qs = document.getElementById('quest-screen');
   qs.style.display = 'flex';
@@ -1315,69 +1317,73 @@ async function showQuestScreen(war) {
 
   container.innerHTML = '';
 
-  const makeItem = (quest) => {
-    const item = document.createElement('div');
-    item.className = 'quest-item';
-    item.textContent = quest.name;
-    item.onclick = () => {
-      selectedQuestId = quest.id;
-      go();
-    };
-    return item;
-  };
-
-  // Sections triées dans l'ordre de l'histoire, numérotées « Section N ».
-  // On ne garde que les quêtes d'histoire (type 'main') ; si le chapitre n'en
-  // a aucune (war atypique), on retombe sur toutes les quêtes pour ne rien casser.
-  // Script d'ouverture du chapitre (prélude), s'il existe
-  if (detail.script) {
-    const group = document.createElement('div');
-    group.className = 'spot-group';
-    const sn = document.createElement('div');
-    sn.className = 'spot-name';
-    sn.textContent = 'Prelude';
-    group.appendChild(sn);
-    const item = document.createElement('div');
-    item.className = 'quest-item';
-    item.textContent = 'Opening Script';
-    item.onclick = () => { selectedQuestId = detail.script; go(); };
-    group.appendChild(item);
-    container.appendChild(group);
+  // Liste à plat des entrées jouables du chapitre (prélude + chaque
+  // (quête, phase)), dans l'ordre de l'histoire — sert au menu ET à
+  // l'enchaînement « suivant ».
+  currentEntries = buildEntries(detail);
+  if (currentEntries.length === 0) {
+    container.innerHTML = '<div class="quest-loading">No quests.</div>';
+    return;
   }
 
+  let lastSection = null, lastSubhead = null, group = null;
+  currentEntries.forEach((entry, ei) => {
+    if (entry.section !== lastSection) {
+      group = document.createElement('div');
+      group.className = 'spot-group';
+      const sn = document.createElement('div');
+      sn.className = 'spot-name';
+      sn.textContent = entry.section;
+      group.appendChild(sn);
+      container.appendChild(group);
+      lastSection = entry.section;
+      lastSubhead = null;
+    }
+    // sous-titre de quête (uniquement pour les quêtes à plusieurs phases)
+    if (entry.multi && entry.quest !== lastSubhead) {
+      const sub = document.createElement('div');
+      sub.className = 'quest-subhead';
+      sub.textContent = entry.quest;
+      group.appendChild(sub);
+      lastSubhead = entry.quest;
+    } else if (!entry.multi) {
+      lastSubhead = null;
+    }
+    const item = document.createElement('div');
+    item.className = 'quest-item' + (entry.multi ? ' phase' : '');
+    item.textContent = entry.label;
+    item.onclick = () => { currentEntryIndex = ei; go(); };
+    group.appendChild(item);
+  });
+}
+
+// Construit la liste ordonnée des entrées jouables d'un chapitre.
+function buildEntries(detail) {
+  const entries = [];
+  if (detail.script) {
+    entries.push({ kind: 'opening', url: detail.script, section: 'Prelude', label: 'Opening Script', displayName: 'Opening Script' });
+  }
   let sections = buildSections(detail, true);
   if (sections.length === 0) sections = buildSections(detail, false);
-
-  sections.forEach((section, i) => {
-    const group = document.createElement('div');
-    group.className = 'spot-group';
-    const sn = document.createElement('div');
-    sn.className = 'spot-name';
-    sn.textContent = 'Section ' + (i + 1);
-    group.appendChild(sn);
-    section.quests.forEach(quest => group.appendChild(makeItem(quest)));
-    container.appendChild(group);
+  sections.forEach((section, si) => {
+    const sectionName = 'Section ' + (si + 1);
+    section.quests.forEach(q => {
+      const phases = (q.phases && q.phases.length) ? q.phases : [1];
+      if (phases.length <= 1) {
+        entries.push({ kind: 'quest', id: q.id, phase: phases[0], section: sectionName, label: q.name, displayName: q.name });
+      } else {
+        phases.forEach(p => entries.push({
+          kind: 'quest', id: q.id, phase: p, section: sectionName, multi: true,
+          quest: q.name, label: `Phase ${p}`, displayName: `${q.name} — Phase ${p}`,
+        }));
+      }
+    });
   });
-
-  if (!detail.script && sections.length === 0) {
-    container.innerHTML = '<div class="quest-loading">No quests.</div>';
-  }
+  return entries;
 }
 
-function allQuests() {
-  if (!currentWarDetail) return [];
-  let sections = buildSections(currentWarDetail, true);
-  if (sections.length === 0) sections = buildSections(currentWarDetail, false);
-  return sections.flatMap(s => s.quests.map(q => ({ ...q })));
-}
-function nextQuest() {
-  const all = allQuests();
-  // Après le prélude (script d'ouverture), enchaîner sur la 1re quête
-  if (currentWarDetail && currentQuestId === currentWarDetail.script) {
-    return all[0] || null;
-  }
-  const i = all.findIndex(q => String(q.id) === String(currentQuestId));
-  return i >= 0 && i + 1 < all.length ? all[i + 1] : null;
+function nextEntry() {
+  return currentEntries[currentEntryIndex + 1] || null;
 }
 
 function toggleOptions() { document.getElementById('options-overlay').classList.toggle('active'); }
@@ -1390,8 +1396,7 @@ function setAutoSpeed(v) {
   document.getElementById('auto-speed-val').textContent = `${autoSpeed.toFixed(1)}x`;
 }
 
-async function loadQuest(id) {
-  currentQuestId = id;
+async function loadEntry(entry) {
   document.getElementById('end-overlay').classList.remove('active');
   // reset des couches visuelles entre deux quêtes
   resetVisualEffects();
@@ -1402,9 +1407,9 @@ async function loadQuest(id) {
   audio.load();
   let script;
   try {
-    script = (typeof id === 'string' && id.startsWith('http'))
-      ? await parseScriptUrls([id])      // script d'ouverture (URL directe)
-      : await fetchQuestScript(id);       // quête normale
+    script = entry.kind === 'opening'
+      ? await parseScriptUrls([entry.url])           // script d'ouverture
+      : await fetchQuestScript(entry.id, entry.phase); // une phase de quête
   } catch (e) {
     return false;
   }
@@ -1414,9 +1419,10 @@ async function loadQuest(id) {
 }
 
 async function go() {
-  if (!selectedQuestId) return;
+  const entry = currentEntries[currentEntryIndex];
+  if (!entry) return;
   document.getElementById('quest-log').textContent = 'Loading...';
-  const ok = await loadQuest(selectedQuestId);
+  const ok = await loadEntry(entry);
   if (!ok) { document.getElementById('quest-log').textContent = 'No content.'; return; }
   document.getElementById('quest-log').textContent = '';
   document.getElementById('quest-screen').style.display = 'none';
@@ -1425,10 +1431,9 @@ async function go() {
 }
 
 async function goNextQuest() {
-  const all = allQuests();
-  let i = all.findIndex(q => String(q.id) === String(currentQuestId));
-  while (++i < all.length) {
-    const ok = await loadQuest(all[i].id);
+  while (currentEntryIndex + 1 < currentEntries.length) {
+    currentEntryIndex++;
+    const ok = await loadEntry(currentEntries[currentEntryIndex]);
     if (ok) { run(); return; }
   }
   stop();
@@ -1462,10 +1467,10 @@ async function run() {
   textRevealState = null;
   if (idx >= sc.length) {
     audio.pause();
-    const nq = nextQuest();
+    const nq = nextEntry();
     const label = document.getElementById('end-next-label');
     const btnNext = document.getElementById('btn-next-quest');
-    if (nq) { label.textContent = `Next: ${nq.name}`; btnNext.style.display = ''; }
+    if (nq) { label.textContent = `Next: ${nq.displayName}`; btnNext.style.display = ''; }
     else { label.textContent = 'End of available content.'; btnNext.style.display = 'none'; }
     document.getElementById('end-overlay').classList.add('active');
     return;
