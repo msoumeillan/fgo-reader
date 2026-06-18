@@ -1850,10 +1850,9 @@ function handleReaderClick(e) {
     !box.classList.contains('at-bottom')
   ) return;
 
-  const third = window.innerWidth / 3;
-  if (e.clientX < third) { prev(); return; }
-  if (e.clientX >= third * 2) { next(); return; }
-  // Tiers du milieu : rien (masquer l'UI se fait par un glissement vers le bas)
+  // Tiers gauche = précédent ; tout le reste (milieu + droite) = avancer.
+  if (e.clientX < window.innerWidth / 3) { prev(); return; }
+  next();
 }
 // --- Lecture automatique (bouton AUTO) ---
 function toggleAuto(e) {
