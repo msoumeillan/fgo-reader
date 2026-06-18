@@ -916,7 +916,7 @@ seAudio.volume = 0.8;
 choiceSeAudio.volume = 0.8;
 let textDragState = null;
 let suppressTextClick = false;
-let lastMiddleClick = null;
+let swipeState = null, suppressClick = false;
 let logPointerState = null;
 let advancePromptToken = 0;
 let textRevealToken = 0;
@@ -965,6 +965,28 @@ function endTextDrag(e) {
 textElement.addEventListener('pointerup', endTextDrag);
 textElement.addEventListener('pointercancel', endTextDrag);
 readerContainer.addEventListener('click', handleReaderClick);
+// Geste : glissement vertical pour masquer (vers le bas) / réafficher (vers le
+// haut) la barre de lecture et les options.
+readerContainer.addEventListener('pointerdown', (e) => {
+  if (movieActive || isReaderUiTarget(e.target)) { swipeState = null; return; }
+  // ne pas interférer avec le défilement de la boîte de texte (UI visible)
+  if (!readerContainer.classList.contains('ui-hidden') && document.getElementById('text-box').contains(e.target)) { swipeState = null; return; }
+  swipeState = { x: e.clientX, y: e.clientY };
+});
+readerContainer.addEventListener('pointerup', (e) => {
+  if (!swipeState) return;
+  const dx = e.clientX - swipeState.x;
+  const dy = e.clientY - swipeState.y;
+  swipeState = null;
+  if (Math.abs(dy) < 70 || Math.abs(dy) <= Math.abs(dx) * 1.5) return; // pas un glissement vertical net
+  const hidden = readerContainer.classList.contains('ui-hidden');
+  if (dy > 0 && !hidden) { hideReaderUi(); }
+  else if (dy < 0 && hidden) { showReaderUi(); }
+  else return;
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 300);
+});
+readerContainer.addEventListener('pointercancel', () => { swipeState = null; });
 logOverlay.addEventListener('pointerdown', (e) => {
   logPointerState = { x: e.clientX, y: e.clientY, moved: false };
 });
@@ -1809,17 +1831,15 @@ function isReaderUiTarget(target) {
 function handleReaderClick(e) {
   // Pendant une cinématique : un clic la passe
   if (movieActive) { endMovie(); return; }
+  // Clic généré juste après un glissement (masquer/afficher l'UI) : on l'ignore
+  if (suppressClick) { suppressClick = false; return; }
   if (readerContainer.classList.contains('ui-hidden')) {
     showReaderUi();
-    lastMiddleClick = null;
     return;
   }
   if (isReaderUiTarget(e.target)) return;
 
-  if (completeTextReveal()) {
-    lastMiddleClick = null;
-    return;
-  }
+  if (completeTextReveal()) return;
 
   const text = document.getElementById('text');
   const box = document.getElementById('text-box');
@@ -1830,31 +1850,9 @@ function handleReaderClick(e) {
     !box.classList.contains('at-bottom')
   ) return;
 
-  const third = window.innerWidth / 3;
-  if (e.clientX < third) {
-    lastMiddleClick = null;
-    prev();
-    return;
-  }
-  if (e.clientX >= third * 2) {
-    lastMiddleClick = null;
-    next();
-    return;
-  }
-
-  const now = performance.now();
-  const isDoubleMiddleClick =
-    lastMiddleClick &&
-    now - lastMiddleClick.time <= 350 &&
-    Math.abs(e.clientX - lastMiddleClick.x) <= 80 &&
-    Math.abs(e.clientY - lastMiddleClick.y) <= 80;
-
-  if (isDoubleMiddleClick) {
-    hideReaderUi();
-    lastMiddleClick = null;
-  } else {
-    lastMiddleClick = { time: now, x: e.clientX, y: e.clientY };
-  }
+  // Tiers gauche = précédent ; tout le reste (milieu + droite) = avancer.
+  if (e.clientX < window.innerWidth / 3) { prev(); return; }
+  next();
 }
 // --- Lecture automatique (bouton AUTO) ---
 function toggleAuto(e) {
