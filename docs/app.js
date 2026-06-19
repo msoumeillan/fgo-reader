@@ -340,6 +340,12 @@ async function parseScriptUrls(scriptUrls) {
           const baseFace = parseInt(charaMatch[3], 10);
           const charName = charaMatch[4].replace(/"/g, "").trim();
 
+          // Les charaSet nommés "Effect" sont des couches d'effet (vision,
+          // aura...) affichées avec un charaEffect qu'on ne sait pas reproduire.
+          // Sans l'effet, elles apparaissent comme un perso solide parasite :
+          // on ne les enregistre donc pas (elles ne parlent jamais).
+          if (/^effect$/i.test(charName)) { continue; }
+
           speakerState[code] = {
             name: charName,
             url: `${ASSETS}/${REGION}/CharaFigure/${charID}/${charID}_merged.png`,
@@ -439,11 +445,9 @@ async function parseScriptUrls(scriptUrls) {
           if (lastShownCode === charClearMatch[1]) lastShownCode = null;
         }
 
-        // 2c) charaFadein / charaPut : personnage qui devient visible.
-        // On l'affiche dès son entrée en scène (il reste affiché si un autre
-        // perso parle hors écran, ex. Romani en communication).
+        // 2c) charaFadein CODE [DUREE] [POSITION] : personnage qui devient visible.
         // NB : [charaTalk X] est un simple effet de focus, PAS une apparition
-        const fadeinMatch = line.match(/chara(?:Fadein|Put(?:FSR)?)\s+([a-zA-Z0-9]+)(?:\s+([0-9]*\.?[0-9]+))?(?:\s+(-?[0-9]+(?:,-?[0-9]+)?))?/);
+        const fadeinMatch = line.match(/charaFadein\s+([a-zA-Z0-9]+)(?:\s+([0-9]*\.?[0-9]+))?(?:\s+(-?[0-9]+(?:,-?[0-9]+)?))?/);
         if (fadeinMatch) {
           const inCode = fadeinMatch[1];
           if (speakerState[inCode]) {
@@ -457,6 +461,31 @@ async function parseScriptUrls(scriptUrls) {
             if (fadeinMatch[3] !== undefined) charPositions[inCode] = fadeinMatch[3];
             step.charPosition = charPositions[inCode] || "1";
             lastShownCode = inCode;
+          }
+        }
+
+        // 2c-bis) charaPut CODE POSITION (sans durée) : place/montre un perso,
+        // OU le cache si la position est hors écran (convention FGO : grandes
+        // coordonnées comme 1200,1200 pour faire sortir un sprite/effet).
+        const putMatch = line.match(/\[charaPut(?:FSR)?\s+([a-zA-Z0-9]+)\s+(-?[0-9]+(?:,-?[0-9]+)?)/);
+        if (putMatch && speakerState[putMatch[1]]) {
+          const code = putMatch[1];
+          const pos = putMatch[2];
+          const offscreen = pos.includes(',') && pos.split(',').some(n => Math.abs(Number(n)) >= 1000);
+          if (offscreen) {
+            visibleChars.delete(code);
+            step.hideCharCode = code;
+            if (lastShownCode === code) lastShownCode = null;
+          } else {
+            charPositions[code] = pos;
+            visibleChars.add(code);
+            step.showChar = {
+              code,
+              url: speakerState[code].url,
+              face: speakerState[code].currentFace,
+            };
+            step.charPosition = pos;
+            lastShownCode = code;
           }
         }
 
@@ -723,9 +752,15 @@ const Characters = {
     // avec le même offsetY que d'habitude la tête sortirait de l'écran. On
     // recentre donc en fonction du faceY (sans effet sur les figures normales
     // dont faceY vaut déjà ~149).
+    // Recentrage vertical des sprites "hologramme/communication" (Romani, Da
+    // Vinci...) : ils sont dessinés bien plus haut dans leur image (faceY ~21-28
+    // au lieu de ~149), donc sans correction la tête sort de l'écran. La
+    // correction vaut ~0 pour une figure normale (faceY≈149) : on l'applique à
+    // toutes les figures standard, qu'elles soient en mode comm ou non — car
+    // certains chapitres (Agartha) affichent ces sprites comme persos normaux.
     const STD_FACE_Y = 149;
     let bodyTopPx = -offY * S;
-    if (isComm && info) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
+    if (info && info.standard) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
 
     bodyDiv.style.backgroundImage = `url("${url}")`;
     bodyDiv.style.width = `${figW * S}px`;
