@@ -730,11 +730,10 @@ const Characters = {
     const bodyDiv = container.querySelector('.char-body');
     const faceDiv = container.querySelector('.char-face');
     const scan = container.querySelector('.char-scanlines');
-    const match = url.match(/\/([0-9]+)_merged\.png/);
-    const charID = match ? match[1] : null;
+    const charID = figureIdFromUrl(url);
     const info = charID ? await fetchFigureInfo(charID) : null;
     if (!container.isConnected) return;
-    this.figures.set(code, { url, faceIndex, isComm });
+    this.figures.set(code, { url, faceIndex, isComm, charID });
 
     // En paysage : calé sur la hauteur (comme le jeu). En portrait : on
     // réduit pour que le buste (~420px au centre du canvas) tienne en largeur
@@ -752,15 +751,16 @@ const Characters = {
     // avec le même offsetY que d'habitude la tête sortirait de l'écran. On
     // recentre donc en fonction du faceY (sans effet sur les figures normales
     // dont faceY vaut déjà ~149).
-    // Recentrage vertical des sprites "hologramme/communication" (Romani, Da
-    // Vinci...) : ils sont dessinés bien plus haut dans leur image (faceY ~21-28
-    // au lieu de ~149), donc sans correction la tête sort de l'écran. La
-    // correction vaut ~0 pour une figure normale (faceY≈149) : on l'applique à
-    // toutes les figures standard, qu'elles soient en mode comm ou non — car
-    // certains chapitres (Agartha) affichent ces sprites comme persos normaux.
+    // Recentrage vertical des sprites "hologramme/communication" (Romani...) :
+    // ils sont dessinés plus haut dans leur image (faceY ~21-28 au lieu de ~149).
+    // Exception : quand le script donne un offset vertical explicite (`0,-90`),
+    // on laisse cet offset piloter la hauteur comme le viewer Atlas.
     const STD_FACE_Y = 149;
+    const currentPosition = this.positions.get(code);
+    const usesScriptYOffset = usesFigureVerticalOffset(currentPosition, charID);
     let bodyTopPx = -offY * S;
-    if (info && info.standard) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
+    if (usesScriptYOffset) bodyTopPx += figureVerticalOffsetPx(currentPosition, S);
+    if (info && info.standard && !usesScriptYOffset) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
 
     bodyDiv.style.backgroundImage = `url("${url}")`;
     bodyDiv.style.width = `${figW * S}px`;
@@ -782,6 +782,7 @@ const Characters = {
       container.classList.remove('comm');
       scan.style.display = 'none';
     }
+    if (currentPosition !== undefined) this.applyPosition(code, currentPosition, 0, charID);
 
     const face = parseInt(faceIndex);
     if (!info || !Number.isFinite(face) || face <= 0) {
@@ -813,14 +814,18 @@ const Characters = {
     this.refreshAppearance();
   },
 
-  move(code, position, durationMs = 0) {
-    this.positions.set(code, position);
+  applyPosition(code, position, durationMs = 0, charID = this.figures.get(code)?.charID) {
     const container = this.get(code, false);
     if (!container) return;
-    const target = charPosition(position);
+    const target = charPosition(position, charID);
     container.style.transitionDuration = `${durationMs}ms, ${durationMs}ms, 180ms`;
     container.style.setProperty('--char-x', `${target.x}px`);
     container.style.setProperty('--char-y', `${target.y}px`);
+  },
+
+  move(code, position, durationMs = 0) {
+    this.positions.set(code, position);
+    this.applyPosition(code, position, durationMs);
     markEffect('charamove', durationMs);
   },
 
@@ -1240,10 +1245,36 @@ function moveCamera(camera) {
   markEffect('camera', camera.durationMs);
 }
 
-function charPosition(position) {
-  if (String(position).includes(',')) {
-    const [x, y] = String(position).split(',').map(Number);
-    return { x: x * referenceScale(), y: y * referenceScale() };
+function figureIdFromUrl(url) {
+  const match = String(url || '').match(/\/([0-9]+)_merged\.png/);
+  return match ? match[1] : null;
+}
+
+function charPositionPair(position) {
+  if (!String(position).includes(',')) return null;
+  const [x, y] = String(position).split(',').map(Number);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function usesFigureVerticalOffset(position, charID) {
+  const pair = charPositionPair(position);
+  if (!pair || pair.y === 0) return false;
+  return String(charID || '').startsWith('98') || pair.y <= 0;
+}
+
+function figureVerticalOffsetPx(position, scale = referenceScale()) {
+  const pair = charPositionPair(position);
+  return pair ? -pair.y * scale : 0;
+}
+
+function charPosition(position, charID) {
+  const pair = charPositionPair(position);
+  if (pair) {
+    return {
+      x: pair.x * referenceScale(),
+      y: usesFigureVerticalOffset(position, charID) ? 0 : -pair.y * referenceScale(),
+    };
   }
   const slot = Number(position);
   return { x: ((Number.isFinite(slot) ? slot : 1) - 1) * 220 * referenceScale(), y: 0 };
