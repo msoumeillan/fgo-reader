@@ -102,6 +102,8 @@
 
         /* === READER === */
         #reader-container { display: none; width: 100%; height: 100%; position: relative; overflow: hidden; }
+        /* Mode letterbox : scène 16:9 centrée avec barres noires (le body, noir, fait les barres) */
+        #reader-container.letterbox { position: absolute; inset: 0; margin: auto; width: min(100vw, calc(100vh * 16 / 9)); height: min(100vh, calc(100vw * 9 / 16)); }
         #reader-container.ui-hidden #text-box,
         #reader-container.ui-hidden #options-btn {
             display: none;
@@ -502,6 +504,9 @@
                     <span class="opt-label">Auto speed <span id="auto-speed-val">1.0x</span></span>
                     <input id="auto-speed-slider" type="range" min="50" max="200" step="10" value="100" oninput="setAutoSpeed(this.value)">
                 </div>
+                <label class="opt-label" style="cursor:pointer;">Letterbox (test)
+                    <input id="letterbox-toggle" type="checkbox" style="width:18px;height:18px;cursor:pointer;accent-color:#3a7bd5;" onchange="setLetterbox(this.checked)">
+                </label>
                 <button class="opt-btn" onclick="stop()">↩ Back to menu</button>
             </div>
         </div>

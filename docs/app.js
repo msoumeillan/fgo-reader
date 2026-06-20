@@ -737,9 +737,9 @@ const Characters = {
 
     // En paysage : calé sur la hauteur (comme le jeu). En portrait : on
     // réduit pour que le buste (~420px au centre du canvas) tienne en largeur
-    const S = Math.min(window.innerHeight / 576, window.innerWidth / 420);
+    const S = Math.min(stageH() / 576, stageW() / 420);
     container.style.width = `${1024 * S}px`;
-    container.style.height = `${window.innerHeight}px`;
+    container.style.height = `${stageH()}px`;
 
     const figW = info ? info.figureWidth : 1024;
     const offY = info ? info.offsetY : 0;
@@ -916,8 +916,29 @@ const Characters = {
   },
 };
 
+// Mode letterbox : la scène est une boîte 16:9 centrée (barres noires), et
+// tout (fond, persos, UI) est mis à l'échelle par cette boîte au lieu de la
+// fenêtre — placement cohérent quel que soit l'écran. Désactivé par défaut.
+let letterbox = localStorage.getItem('fgo-letterbox') === '1';
+function stageW() {
+  return letterbox ? Math.min(window.innerWidth, window.innerHeight * 16 / 9) : window.innerWidth;
+}
+function stageH() {
+  return letterbox ? Math.min(window.innerHeight, window.innerWidth * 9 / 16) : window.innerHeight;
+}
+function setLetterbox(on) {
+  letterbox = !!on;
+  localStorage.setItem('fgo-letterbox', letterbox ? '1' : '0');
+  document.getElementById('reader-container').classList.toggle('letterbox', letterbox);
+  const box = document.getElementById('letterbox-toggle');
+  if (box) box.checked = letterbox;
+  updateReaderScale();
+  updateTextOverflow();
+  Characters.resize();
+}
+
 function updateReaderScale() {
-  const scale = Math.min(window.innerWidth / 1024, window.innerHeight / 576);
+  const scale = Math.min(stageW() / 1024, stageH() / 576);
   document.documentElement.style.setProperty('--fgo-ui-unit', `${scale}px`);
 }
 
@@ -1067,7 +1088,7 @@ function cancelAnimation(animation) {
 }
 
 function referenceScale() {
-  return window.innerHeight / 576;
+  return stageH() / 576;
 }
 
 function animateOpacity(element, from, to, durationMs, hideAfter = false) {
@@ -1303,6 +1324,10 @@ function resetVisualEffects() {
 }
 
 async function init() {
+  // applique l'état letterbox mémorisé
+  document.getElementById('reader-container').classList.toggle('letterbox', letterbox);
+  const lbBox = document.getElementById('letterbox-toggle');
+  if (lbBox) lbBox.checked = letterbox;
   updateReaderScale();
   try {
     wars = await fetchWars();
