@@ -744,7 +744,10 @@ const Characters = {
     const figW = info ? info.figureWidth : 1024;
     const offY = info ? info.offsetY : 0;
     const bodyH = info ? info.bodyHeight : 768;
-    const bodyLeft = ((1024 - figW) / 2 + (info ? info.offsetX : 0)) * S;
+    // offsetX est appliqué DEUX fois comme dans le jeu / le viewer Atlas (une
+    // fois sur le wrapper, une fois sur la figure) : sinon les sprites au
+    // offsetX non nul (servants type Ishtar) sont décalés trop à gauche.
+    const bodyLeft = ((1024 - figW) / 2 + 2 * (info ? info.offsetX : 0)) * S;
 
     // Position verticale du corps. Les sprites de communication (visio) sont
     // dessinés bien plus haut dans leur image (faceY ~21 au lieu de ~149) :
