@@ -749,21 +749,18 @@ const Characters = {
     // offsetX non nul (servants type Ishtar) sont décalés trop à gauche.
     const bodyLeft = ((1024 - figW) / 2 + 2 * (info ? info.offsetX : 0)) * S;
 
-    // Position verticale du corps. Les sprites de communication (visio) sont
-    // dessinés bien plus haut dans leur image (faceY ~21 au lieu de ~149) :
-    // avec le même offsetY que d'habitude la tête sortirait de l'écran. On
-    // recentre donc en fonction du faceY (sans effet sur les figures normales
-    // dont faceY vaut déjà ~149).
-    // Recentrage vertical des sprites "hologramme/communication" (Romani...) :
-    // ils sont dessinés plus haut dans leur image (faceY ~21-28 au lieu de ~149).
-    // Exception : quand le script donne un offset vertical explicite (`0,-90`),
-    // on laisse cet offset piloter la hauteur comme le viewer Atlas.
-    const STD_FACE_Y = 149;
+    // Position verticale du corps : règle UNIQUE, identique au viewer Atlas
+    // (Scene.tsx) -> figureWrapperTop = -(offsetY + scriptY) * scale.
+    //   - offsetY : décalage propre à la figure (svtScript)
+    //   - scriptY : décalage donné par la commande (`0,-68`, `0,-90`...),
+    //     appliqué quand Atlas le retient (perso "98..." ou y <= 0).
+    // Pas de recentrage maison sur faceY : Atlas n'en fait jamais, et le faire
+    // ne servait qu'à décaler les figures standard à faceY != 149 (ex. Goredolf)
+    // par rapport au jeu. faceY ne pilote QUE la position du visage (plus bas).
     const currentPosition = this.positions.get(code);
     const usesScriptYOffset = usesFigureVerticalOffset(currentPosition, charID);
     let bodyTopPx = -offY * S;
     if (usesScriptYOffset) bodyTopPx += figureVerticalOffsetPx(currentPosition, S);
-    if (info && info.standard && !usesScriptYOffset) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
 
     bodyDiv.style.backgroundImage = `url("${url}")`;
     bodyDiv.style.width = `${figW * S}px`;
