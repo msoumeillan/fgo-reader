@@ -754,13 +754,19 @@ const Characters = {
     //   - offsetY : décalage propre à la figure (svtScript)
     //   - scriptY : décalage donné par la commande (`0,-68`, `0,-90`...),
     //     appliqué quand Atlas le retient (perso "98..." ou y <= 0).
-    // Pas de recentrage maison sur faceY : Atlas n'en fait jamais, et le faire
-    // ne servait qu'à décaler les figures standard à faceY != 149 (ex. Goredolf)
-    // par rapport au jeu. faceY ne pilote QUE la position du visage (plus bas).
+    // Pas de recentrage maison sur faceY pour les figures normales : Atlas n'en
+    // fait jamais, ça ne servait qu'à décaler les figures à faceY != 149 (ex.
+    // Goredolf) par rapport au jeu. faceY ne pilote que la position du visage.
+    // EXCEPTION : les sprites d'appel/hologramme (communicationChara, isComm)
+    // sont dessinés très haut dans leur image (faceY ~21) avec un offsetY de
+    // figure normale -> sans recentrage la tête sort de l'écran. Quand ils
+    // n'ont pas d'offset de script (slot), on les recentre sur le faceY.
+    const STD_FACE_Y = 149;
     const currentPosition = this.positions.get(code);
     const usesScriptYOffset = usesFigureVerticalOffset(currentPosition, charID);
     let bodyTopPx = -offY * S;
     if (usesScriptYOffset) bodyTopPx += figureVerticalOffsetPx(currentPosition, S);
+    else if (isComm && info) bodyTopPx += (STD_FACE_Y - info.faceY) * S;
 
     bodyDiv.style.backgroundImage = `url("${url}")`;
     bodyDiv.style.width = `${figW * S}px`;
