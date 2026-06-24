@@ -978,9 +978,17 @@ const choiceSeAudio = document.getElementById('choice-se-player');
 const textElement = document.getElementById('text');
 const readerContainer = document.getElementById('reader-container');
 const logOverlay = document.getElementById('log-overlay');
-audio.volume = 0.5;
-seAudio.volume = 0.8;
-choiceSeAudio.volume = 0.8;
+// Volume maître unique : le curseur pilote BGM, effets sonores ET son des
+// cinématiques, pour que « couper le son » coupe vraiment tout.
+let masterVolume = 0.5;
+function applyVolume() {
+  audio.volume = masterVolume;
+  seAudio.volume = masterVolume;
+  choiceSeAudio.volume = masterVolume;
+  const movie = document.getElementById('movie-player');
+  if (movie) movie.volume = masterVolume;
+}
+applyVolume();
 let textDragState = null;
 let suppressTextClick = false;
 let swipeState = null, suppressClick = false;
@@ -1506,7 +1514,11 @@ function nextEntry() {
 }
 
 function toggleOptions() { document.getElementById('options-overlay').classList.toggle('active'); }
-function setVolume(v) { audio.volume = v / 100; document.getElementById('vol-val').textContent = v + '%'; }
+function setVolume(v) {
+  masterVolume = Math.min(1, Math.max(0, Number(v) / 100));
+  document.getElementById('vol-val').textContent = Math.round(masterVolume * 100) + '%';
+  applyVolume();
+}
 function setAutoSpeed(v) {
   const value = Math.min(200, Math.max(50, Number(v) || 100));
   autoSpeed = value / 100;
@@ -2005,6 +2017,7 @@ function playMovie(url) {
   movieActive = true;
   audio.pause(); // couper la BGM pendant la vidéo (le film a son propre son)
   autoToken++;   // pas d'auto-avance pendant le film
+  v.volume = masterVolume;
   v.src = url;
   v.style.display = 'block';
   v.currentTime = 0;
