@@ -1,2 +1,5 @@
 node_modules/
-.claude/settings.local.json
+
+# fichiers temporaires
+quest_tmp.json
+scanned_history*.txt
