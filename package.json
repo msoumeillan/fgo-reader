@@ -1,17 +1,29 @@
 {
-  "name": "fgotest",
+  "name": "fgo-reader",
   "version": "1.0.0",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "description": "Lecteur d'histoire Fate/Grand Order dans le navigateur, basé sur les données publiques d'Atlas Academy.",
+  "homepage": "https://msoumeillan.github.io/fgo-reader/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/msoumeillan/fgo-reader.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "description": "",
+  "author": "Mattéo Soumeillan",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "fate-grand-order",
+    "visual-novel",
+    "pwa",
+    "atlas-academy"
+  ],
   "dependencies": {
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
     "axios": "^1.13.2",
-    "express": "^5.2.1",
     "puppeteer": "^24.34.0"
   }
 }
